@@ -24,7 +24,7 @@ El script **nunca pide contraseñas ni tokens**: todos los inicios de sesión se
 | Organización | Comprueba que eres miembro de Ad-Astra-UC3M y acepta tu invitación. |
 | Git | Configura tu nombre, tu correo y el merge de Simulink si tienes MATLAB. |
 | Repositorios | Clona todos los repos: los de tu proyecto y área en `My Repositories`, el resto en `Team Repositories`. |
-| Accesos directos | Crea la carpeta `Apps` con accesos a cada programa, a GitHub, CADLAB, Onshape y Teams. |
+| Accesos directos | Crea la carpeta `Apps` con accesos a cada programa, a GitHub, CADLAB, Onshape, SimScale y Teams. |
 
 ## Tu carpeta
 

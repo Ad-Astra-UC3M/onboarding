@@ -44,6 +44,7 @@
     { "name": "GitHub - Ad Astra", "url": "https://github.com/Ad-Astra-UC3M" },
     { "name": "CADLAB",            "url": "https://cadlab.io" },
     { "name": "Onshape",           "url": "https://cad.onshape.com" },
+    { "name": "SimScale",          "url": "https://www.simscale.com" },
     { "name": "Teams",             "url": "https://teams.microsoft.com" }
   ],
   "cadlabUrl": "https://cadlab.io"

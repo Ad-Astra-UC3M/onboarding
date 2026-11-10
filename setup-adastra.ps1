@@ -558,19 +558,22 @@ function Sync-Repositories($Config, $Member, [string]$Root) {
 }
 
 function Install-PullAll($Config, [string]$Root) {
-    if ($DryRun) { Write-Info "(dry-run) copiaría pull-all.ps1 a $Root"; return }
-    $dest = Join-Path $Root 'pull-all.ps1'
+    # A plain .cmd so anyone can run it with a double-click (a .ps1 opens in
+    # Notepad and depends on the execution policy).
+    $name = 'Update all repositories.cmd'
+    if ($DryRun) { Write-Info "(dry-run) copiaría '$name' a $Root"; return }
+    $dest = Join-Path $Root $name
     try {
-        if ($script:ScriptDir -and (Test-Path -LiteralPath (Join-Path $script:ScriptDir 'pull-all.ps1'))) {
-            Copy-Item -LiteralPath (Join-Path $script:ScriptDir 'pull-all.ps1') -Destination $dest -Force -ErrorAction Stop
+        if ($script:ScriptDir -and (Test-Path -LiteralPath (Join-Path $script:ScriptDir 'pull-all.cmd'))) {
+            Copy-Item -LiteralPath (Join-Path $script:ScriptDir 'pull-all.cmd') -Destination $dest -Force -ErrorAction Stop
         } else {
             $base = $Config.rawBase
             if (-not $base) { $base = $DefaultRawBase }
-            Invoke-WebRequest -Uri "$base/pull-all.ps1" -OutFile $dest -UseBasicParsing -ErrorAction Stop
+            Invoke-WebRequest -Uri "$base/pull-all.cmd" -OutFile $dest -UseBasicParsing -ErrorAction Stop
         }
-        Write-Ok "pull-all.ps1 copiado (actualiza todos los repositorios de golpe)"
+        Write-Ok "'$name' copiado: doble clic para actualizar todos los repositorios"
     } catch {
-        Write-Warn "No pude copiar pull-all.ps1: $($_.Exception.Message)"
+        Write-Warn "No pude copiar '$name': $($_.Exception.Message)"
     }
 }
 
@@ -699,11 +702,11 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
                 $shortcut.Save()
                 $made++
             }
-            $pull = Join-Path $Root 'pull-all.ps1'
+            $pull = Join-Path $Root 'Update all repositories.cmd'
             if (Test-Path -LiteralPath $pull) {
                 $shortcut = $shell.CreateShortcut((Join-Path $appsDir 'Update all repositories.lnk'))
-                $shortcut.TargetPath = 'powershell.exe'
-                $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$pull`""
+                $shortcut.TargetPath = $pull
+                $shortcut.Arguments = ''
                 $shortcut.WorkingDirectory = $Root
                 $shortcut.Save()
                 $made++

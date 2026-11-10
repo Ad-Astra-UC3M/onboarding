@@ -33,11 +33,11 @@ Escritorio\Ad Astra\
 ├── Apps\                  accesos directos
 ├── My Repositories\       los repos de tu proyecto y área
 ├── Team Repositories\     el resto de repos del equipo
-├── pull-all.ps1           actualiza todos los repos de golpe
+├── Update all repositories.cmd   doble clic: actualiza todos los repos
 └── setup-log.txt
 ```
 
-**`pull-all.ps1`** descarga los últimos cambios de GitHub en todos tus repos (también desde `Apps\Update all repositories`). Solo hace `git pull`: no sube nada y no toca los repos donde tengas cambios sin commit.
+**`Update all repositories.cmd`** (doble clic) descarga los últimos cambios de GitHub en todos tus repos (también desde `Apps\Update all repositories`). Solo hace `git pull`: no sube nada y no toca los repos donde tengas cambios sin commit.
 
 ## Opciones
 

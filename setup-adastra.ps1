@@ -132,7 +132,30 @@ function Find-Exe($App) {
         $found = @(Get-Item -Path $expanded -ErrorAction SilentlyContinue | Sort-Object FullName)
         if ($found.Count -gt 0) { return $found[$found.Count - 1].FullName }
     }
+    # Not in the usual place (installed to another folder or drive): look for a
+    # Start Menu shortcut that points to the same program file.
+    $leafs = @(@($App.exe) | Where-Object { $_ } | ForEach-Object { (Split-Path -Leaf $_).ToLower() })
+    if ($leafs.Count -eq 0) { return $null }
+    foreach ($target in @(Get-StartMenuTargets)) {
+        if ($leafs -contains (Split-Path -Leaf $target).ToLower()) { return $target }
+    }
     return $null
+}
+
+function Get-StartMenuTargets {
+    # Existing .exe targets of every Start Menu shortcut (read once per run).
+    if ($null -ne $script:StartMenuTargets) { return $script:StartMenuTargets }
+    $script:StartMenuTargets = @()
+    if (-not $script:OnWindows) { return $script:StartMenuTargets }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $menus = @((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
+        foreach ($link in @(Get-ChildItem -Path $menus -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue)) {
+            $target = $shell.CreateShortcut($link.FullName).TargetPath
+            if ($target -and $target.ToLower().EndsWith('.exe') -and (Test-Path -LiteralPath $target)) { $script:StartMenuTargets += $target }
+        }
+    } catch { }
+    return $script:StartMenuTargets
 }
 
 function Test-AppInstalled($App) {

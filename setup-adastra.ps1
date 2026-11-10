@@ -30,6 +30,20 @@ param(
     [switch]$Force
 )
 
+# Windows PowerShell 5.1 reads a BOM-less file from disk as ANSI, which garbles
+# every accent below (and adding a BOM would break "irm | iex"). So when this
+# runs from a file on 5.1, re-read the file as UTF-8 and run that copy instead.
+# Keep everything above and inside this block ASCII.
+$script:ScriptDir = $PSScriptRoot
+if ($AdAstraScriptDir) {
+    $script:ScriptDir = $AdAstraScriptDir
+} elseif ($PSCommandPath -and $PSVersionTable.PSVersion.Major -lt 6) {
+    $AdAstraScriptDir = $PSScriptRoot
+    $utf8Source = [System.IO.File]::ReadAllText($PSCommandPath, [System.Text.Encoding]::UTF8)
+    & ([scriptblock]::Create($utf8Source)) @PSBoundParameters
+    return
+}
+
 $ErrorActionPreference = 'Continue'
 $script:OnWindows = ($env:OS -eq 'Windows_NT')
 $script:Results = New-Object System.Collections.ArrayList
@@ -42,7 +56,7 @@ $DefaultRawBase = 'https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/ma
 # ----------------------------------------------------------------------------
 function Write-Log([string]$Text) {
     if ($script:LogPath) {
-        try { Add-Content -LiteralPath $script:LogPath -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -ErrorAction Stop } catch { }
+        try { Add-Content -LiteralPath $script:LogPath -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8 -ErrorAction Stop } catch { }
     }
 }
 function Write-Step([string]$Text) { Write-Host ""; Write-Host "== $Text" -ForegroundColor Cyan; Write-Log "== $Text" }
@@ -117,7 +131,7 @@ function Test-AppInstalled($App) {
     if ($App.command -and (Test-Command $App.command)) { return $true }
     if (Find-Exe $App) { return $true }
     if ($App.wingetId -and (Test-Command 'winget')) {
-        & winget list --id $App.wingetId -e --accept-source-agreements 2>$null | Out-Null
+        & winget list --id $App.wingetId -e --source winget --accept-source-agreements 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { return $true }
     }
     return $false
@@ -128,8 +142,8 @@ function Test-AppInstalled($App) {
 # ----------------------------------------------------------------------------
 function Get-SetupConfig {
     $path = $ConfigPath
-    if (-not $path -and $PSScriptRoot) {
-        $local = Join-Path $PSScriptRoot 'config.json'
+    if (-not $path -and $script:ScriptDir) {
+        $local = Join-Path $script:ScriptDir 'config.json'
         if (Test-Path -LiteralPath $local) { $path = $local }
     }
     if ($path) {
@@ -234,7 +248,9 @@ function Install-Apps($Config, $Member) {
         if (Test-AppInstalled $app) { Write-Ok "$($app.name) ya está instalado"; continue }
         if ($DryRun) { Write-Info "(dry-run) instalaría $($app.name) [$($app.wingetId)]"; continue }
         Write-Info "Instalando $($app.name)... (puede tardar unos minutos; acepta si Windows pide permiso)"
-        & winget install --id $app.wingetId -e --silent --accept-package-agreements --accept-source-agreements
+        # --source winget: without it, a broken msstore source (certificate
+        # errors are common) makes winget refuse to pick a package at all.
+        & winget install --id $app.wingetId -e --source winget --silent --accept-package-agreements --accept-source-agreements
         $code = $LASTEXITCODE
         Update-SessionPath
         if ($code -eq 0 -or (Test-AppInstalled $app)) {
@@ -354,7 +370,7 @@ function Set-GitConfiguration($Config, $Member) {
         if ($DryRun) { Write-Info "(dry-run) git config --global $($pair[0]) `"$($pair[1])`""; continue }
         & git config --global $pair[0] $pair[1]
     }
-    Write-Ok "Git configurado"
+    if (-not $DryRun) { Write-Ok "Git configurado" }
     Set-MatlabMerge $Config
     Add-Result 'Git' 'OK' ''
 }
@@ -368,8 +384,13 @@ function Set-MatlabMerge($Config) {
     $driver = Join-Path (Join-Path (Split-Path -Parent $matlab) 'win64') 'mlAutoMerge.bat'
     $value = ('"{0}" %O %A %B %P' -f ($driver -replace '\\', '/'))
     if ($DryRun) { Write-Info "(dry-run) configuraría el merge de MATLAB/Simulink"; return }
-    & git config --global merge.mlAutoMerge.name 'MATLAB Auto Merge'
-    & git config --global merge.mlAutoMerge.driver $value
+    # Before PowerShell 7.3 (and always in 5.1) embedded double quotes are lost
+    # when passed to a native program unless they are backslash-escaped; the
+    # driver was being saved as just "C:/Program".
+    $legacyArgs = ($PSVersionTable.PSVersion -lt [version]'7.3') -or ("$PSNativeCommandArgumentPassing" -eq 'Legacy')
+    if ($legacyArgs) { $value = $value -replace '"', '\"' }
+    & git config --global --replace-all merge.mlAutoMerge.name 'MATLAB Auto Merge'
+    & git config --global --replace-all merge.mlAutoMerge.driver $value
     Write-Ok "Merge de MATLAB/Simulink configurado"
 }
 
@@ -464,8 +485,8 @@ function Install-PullAll($Config, [string]$Root) {
     if ($DryRun) { Write-Info "(dry-run) copiaría pull-all.ps1 a $Root"; return }
     $dest = Join-Path $Root 'pull-all.ps1'
     try {
-        if ($PSScriptRoot -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'pull-all.ps1'))) {
-            Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'pull-all.ps1') -Destination $dest -Force -ErrorAction Stop
+        if ($script:ScriptDir -and (Test-Path -LiteralPath (Join-Path $script:ScriptDir 'pull-all.ps1'))) {
+            Copy-Item -LiteralPath (Join-Path $script:ScriptDir 'pull-all.ps1') -Destination $dest -Force -ErrorAction Stop
         } else {
             $base = $Config.rawBase
             if (-not $base) { $base = $DefaultRawBase }

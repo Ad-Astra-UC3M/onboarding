@@ -27,7 +27,7 @@
     { "name": "VS Code", "wingetId": "Microsoft.VisualStudioCode", "profiles": ["all", "avionics", "vehicle"],
       "exe": ["%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "%ProgramFiles%\\Microsoft VS Code\\Code.exe"] },
     { "name": "KiCad", "wingetId": "KiCad.KiCad", "profiles": ["all", "avionics"],
-      "exe": ["%ProgramFiles%\\KiCad\\*\\bin\\kicad.exe"] },
+      "exe": ["%ProgramFiles%\\KiCad\\*\\bin\\kicad.exe", "%LOCALAPPDATA%\\Programs\\KiCad\\*\\bin\\kicad.exe"] },
     { "name": "STM32CubeIDE", "manual": true, "profiles": ["all", "avionics"],
       "url": "https://www.st.com/en/development-tools/stm32cubeide.html",
       "hint": "Inicia sesion (o crea cuenta) en ST, descarga 'STM32CubeIDE Windows Installer' e instalalo con las opciones por defecto.",

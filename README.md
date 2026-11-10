@@ -19,7 +19,7 @@ El script **nunca pide contraseñas ni tokens**: todos los inicios de sesión se
 
 | Paso | Qué ocurre |
 |---|---|
-| Aplicaciones | Instala Git, GitHub CLI, SourceTree, VS Code y KiCad. Te lleva a la descarga de STM32CubeIDE y MATLAB y comprueba que quedan instalados. |
+| Aplicaciones | Instala Git, GitHub CLI, SourceTree, VS Code (con la extensión STM32Cube) y KiCad. Te lleva a la descarga de STM32CubeIDE y MATLAB y comprueba que quedan instalados. |
 | GitHub | Te ayuda a crear la cuenta (con tu correo de la UC3M) e inicia sesión. |
 | Organización | Comprueba que eres miembro de Ad-Astra-UC3M y acepta tu invitación. |
 | Git | Configura tu nombre, tu correo y el merge de Simulink si tienes MATLAB. |
@@ -60,5 +60,5 @@ Otros parámetros: `-SkipInstall` (no instala apps), `-InstallProfile all|avioni
 
 ## Para leads
 
-- Las apps, perfiles, proyectos y enlaces se cambian en `config.json`, sin tocar el script.
+- Las apps, extensiones de VS Code (`vscodeExtensions`), perfiles, proyectos y enlaces se cambian en `config.json`, sin tocar el script.
 - `invite-members.ps1 -Csv miembros.csv` invita en bloque a la organización desde un CSV con columna `email` (añade `-DryRun` para probar). Requiere ser owner. **No subas el CSV al repo.**

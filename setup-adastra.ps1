@@ -260,7 +260,51 @@ function Install-Apps($Config, $Member) {
             $failed += $app.name
         }
     }
+    $failed += @(Install-CodeExtensions $Config $Member)
     if ($failed.Count -gt 0) { Add-Result 'Apps' 'Fallo' ($failed -join ', ') } else { Add-Result 'Apps' 'OK' '' }
+}
+
+function Get-CodeCli($Config) {
+    # VS Code's command line. Right after installing, "code" may not be on PATH
+    # yet, so fall back to bin\code.cmd next to the executable.
+    $command = Get-Command 'code.cmd' -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $exe = Find-Exe (@($Config.apps | Where-Object { $_.name -eq 'VS Code' })[0])
+    if ($exe) {
+        $cli = Join-Path (Join-Path (Split-Path -Parent $exe) 'bin') 'code.cmd'
+        if (Test-Path -LiteralPath $cli) { return $cli }
+    }
+    return $null
+}
+
+function Install-CodeExtensions($Config, $Member) {
+    # Installs the VS Code extensions listed in config.json ("vscodeExtensions").
+    # Returns the names of the ones that failed.
+    $failedNames = @()
+    $extensions = @($Config.vscodeExtensions | Where-Object { $_.id -and ($_.profiles -contains $Member.Profile.key) })
+    if ($extensions.Count -eq 0) { return $failedNames }
+    $code = Get-CodeCli $Config
+    if (-not $code) {
+        foreach ($ext in $extensions) {
+            if ($DryRun) { Write-Info "(dry-run) instalaría la extensión de VS Code $($ext.name) [$($ext.id)]" }
+            else { Write-Err "No encuentro VS Code para instalar la extensión $($ext.name)."; $failedNames += $ext.name }
+        }
+        return $failedNames
+    }
+    $installed = @(& $code --list-extensions 2>$null)
+    foreach ($ext in $extensions) {
+        if ($installed -contains $ext.id) { Write-Ok "Extensión $($ext.name) ya está instalada"; continue }
+        if ($DryRun) { Write-Info "(dry-run) instalaría la extensión de VS Code $($ext.name) [$($ext.id)]"; continue }
+        Write-Info "Instalando la extensión $($ext.name) en VS Code..."
+        & $code --install-extension $ext.id 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Extensión $($ext.name) instalada"
+        } else {
+            Write-Err "No se pudo instalar la extensión $($ext.name) (código $LASTEXITCODE)."
+            $failedNames += $ext.name
+        }
+    }
+    return $failedNames
 }
 
 # ----------------------------------------------------------------------------

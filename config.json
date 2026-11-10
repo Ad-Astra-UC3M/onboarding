@@ -37,6 +37,9 @@
       "hint": "Entra en 'Portal MATLAB UC3M' con tu cuenta de la universidad, descarga MATLAB e incluye Simulink al instalar.",
       "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] }
   ],
+  "vscodeExtensions": [
+    { "id": "stmicroelectronics.stm32-vscode-extension", "name": "STM32Cube for VS Code", "profiles": ["all", "avionics"] }
+  ],
   "links": [
     { "name": "GitHub - Ad Astra", "url": "https://github.com/Ad-Astra-UC3M" },
     { "name": "CADLAB",            "url": "https://cadlab.io" },

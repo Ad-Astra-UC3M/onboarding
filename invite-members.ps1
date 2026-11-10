@@ -56,6 +56,13 @@ foreach ($row in $rows) {
             $status = 'invited'
         } elseif ("$out" -match '422|already') {
             $status = 'skipped'; $detail = 'ya es miembro o ya estaba invitado'
+        } elseif ("$out" -match 'admin:org|must be an admin') {
+            # Missing permission: every row would fail the same way, so stop here.
+            Write-Host ""
+            Write-Host "GitHub no te deja invitar todavia. Ejecuta esto, acepta en el navegador y vuelve a lanzar el script:" -ForegroundColor Red
+            Write-Host "    gh auth refresh -h github.com -s admin:org" -ForegroundColor Yellow
+            Write-Host "(Si sigue fallando despues, tu cuenta no es owner de $Org.)"
+            return
         } else {
             $status = 'failed'; $detail = ("$out" -replace '\s+', ' ')
         }
@@ -73,7 +80,12 @@ $invited = @($log | Where-Object { $_.status -eq 'invited' }).Count
 $skipped = @($log | Where-Object { $_.status -eq 'skipped' }).Count
 $failed  = @($log | Where-Object { $_.status -eq 'failed' }).Count
 Write-Host ""
-Write-Host "Resumen: $invited invitados, $skipped saltados, $failed con fallo." -ForegroundColor Cyan
+if ($DryRun) {
+    $would = @($log | Where-Object { $_.status -eq 'dry-run' }).Count
+    Write-Host "Dry-run: se invitaria a $would, $skipped saltados, $failed con fallo. No se ha enviado nada." -ForegroundColor Cyan
+} else {
+    Write-Host "Resumen: $invited invitados, $skipped saltados, $failed con fallo." -ForegroundColor Cyan
+}
 
 if (-not $DryRun) {
     $logPath = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $Csv)) 'invite-log.csv'

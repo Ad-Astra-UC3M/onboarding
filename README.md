@@ -58,6 +58,7 @@ Otros parámetros: `-SkipInstall` (no instala apps), `-InstallProfile all|avioni
 - **"Todavía no eres miembro"**: tu cuenta de GitHub tiene que usar el mismo correo de la UC3M al que se envió la invitación. Si no te ha llegado, pídesela a tu lead.
 - **"No puedo escribir en setup-log.txt" o "No pude mover" un repo**: algunos antivirus (Avast, AVG) protegen el Escritorio y bloquean a PowerShell. No es grave: el setup sigue. Si quieres evitarlo, permite PowerShell en el escudo de ransomware del antivirus.
 - **SourceTree pide iniciar sesión al abrirlo**: sáltate el de Bitbucket; tus repos ya aparecen en la barra lateral y GitHub ya está conectado.
+- **CADLAB**: no hay invitación por correo. Entra en cadlab.io con tu cuenta de GitHub y después escribe a Jorge (Technical Director) con tu usuario de GitHub para que te añada al equipo.
 - **Un repo "no se pudo actualizar"**: tienes cambios locales o estás en una rama sin remoto. Ábrelo en SourceTree.
 
 ## Para leads

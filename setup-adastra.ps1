@@ -376,6 +376,7 @@ function Connect-GitHub($Member) {
     }
     if (-not $DryRun) { & gh auth setup-git 2>$null | Out-Null }
     Add-Result 'GitHub' 'OK' "$login"
+    $script:GitHubLogin = "$login".Trim()
     $script:LoggedIn = $true
 }
 
@@ -742,16 +743,26 @@ function Invoke-ManualApps($Config, $Member) {
 }
 
 function Confirm-Cadlab($Config) {
-    if ($DryRun) { Write-Info "(dry-run) abriría CADLAB y preguntaría por la invitación"; return }
+    if ($DryRun) { Write-Info "(dry-run) abriría CADLAB y preguntaría si has iniciado sesión"; return }
     Write-Host ""
-    Write-Info "CADLAB es donde se revisan los cambios de las PCBs. Tu lead te ha enviado una invitación por correo."
+    # CADLAB can only add people by their CADLAB username, which exists once
+    # they have signed in. So: sign in now, the contact adds them afterwards.
+    $contact = $Config.cadlabContact
+    if (-not $contact) { $contact = 'tu lead' }
+    $who = 'tu usuario de GitHub'
+    if ($script:GitHubLogin) { $who = "tu usuario de GitHub ($script:GitHubLogin)" }
+    Write-Info "CADLAB es donde se revisan los cambios de las PCBs."
     Open-Url $Config.cadlabUrl
-    Write-Info "Inicia sesión en CADLAB con tu cuenta de GitHub y acepta la invitación del correo."
-    if (Read-YesNo '¿Has aceptado la invitación de CADLAB?' $false) { Add-Result 'CADLAB' 'OK' ''; Write-Ok "CADLAB listo"; return }
-    Write-Info "Búscala en tu Outlook de la UC3M (remitente CADLAB.io; mira también en correo no deseado)."
-    Write-Info "Si no te ha llegado, pide a tu lead que te invite."
-    if (Read-YesNo '¿Has aceptado ya la invitación de CADLAB?' $false) { Add-Result 'CADLAB' 'OK' ''; Write-Ok "CADLAB listo" }
-    else { Add-Result 'CADLAB' 'Pendiente' 'Aceptar la invitación de CADLAB'; Write-Warn "Queda pendiente: acéptala en cuanto te llegue." }
+    Write-Info "Inicia sesión en CADLAB ahora, con tu cuenta de GitHub (no crees una cuenta aparte)."
+    Write-Info "No hay invitación por correo: $contact te añade al equipo después de que entres."
+    if (Read-YesNo '¿Has iniciado sesión en CADLAB con GitHub?' $false) {
+        Add-Result 'CADLAB' 'OK' "Pide a $contact que te añada"
+        Write-Ok "Sesión de CADLAB iniciada"
+    } else {
+        Add-Result 'CADLAB' 'Pendiente' 'Iniciar sesión en CADLAB con GitHub'
+        Write-Warn "Queda pendiente: entra en $($Config.cadlabUrl) con tu cuenta de GitHub cuando puedas."
+    }
+    Write-Info "Siguiente paso: escribe a $contact y dile $who para que te añada a CADLAB."
 }
 
 function Show-Summary([string]$Root) {

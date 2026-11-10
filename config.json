@@ -47,5 +47,6 @@
     { "name": "SimScale",          "url": "https://www.simscale.com" },
     { "name": "Teams",             "url": "https://teams.microsoft.com" }
   ],
-  "cadlabUrl": "https://cadlab.io"
+  "cadlabUrl": "https://cadlab.io",
+  "cadlabContact": "Jorge (Technical Director)"
 }

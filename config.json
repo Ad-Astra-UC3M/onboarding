@@ -1,0 +1,47 @@
+{
+  "org": "Ad-Astra-UC3M",
+  "folderName": "Ad Astra",
+  "myReposFolder": "My Repositories",
+  "teamReposFolder": "Team Repositories",
+  "rawBase": "https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/main",
+  "profiles": [
+    { "key": "all",      "label": "Todo (recomendado)" },
+    { "key": "avionics", "label": "Avionics (hardware, software, controls)" },
+    { "key": "vehicle",  "label": "Vehicle Engineering (estructuras, CFD/FEA)" }
+  ],
+  "projects": [
+    { "key": "rocket",    "label": "Rocket A4",               "repoPrefix": "rocket-a4-" },
+    { "key": "satellite", "label": "Model Satellite (SiGMA)", "repoPrefix": "model-satellite-" }
+  ],
+  "areas": [
+    { "key": "hardware",   "label": "Hardware",    "repoSuffix": "hardware" },
+    { "key": "software",   "label": "Software",    "repoSuffix": "software" },
+    { "key": "controls",   "label": "Controls",    "repoSuffix": "controls" },
+    { "key": "structures", "label": "Estructuras", "repoSuffix": "" }
+  ],
+  "apps": [
+    { "name": "Git",        "wingetId": "Git.Git",    "command": "git", "profiles": ["all", "avionics", "vehicle"], "exe": [] },
+    { "name": "GitHub CLI", "wingetId": "GitHub.cli", "command": "gh",  "profiles": ["all", "avionics", "vehicle"], "exe": [] },
+    { "name": "SourceTree", "wingetId": "Atlassian.Sourcetree", "profiles": ["all", "avionics", "vehicle"],
+      "exe": ["%LOCALAPPDATA%\\SourceTree\\SourceTree.exe"] },
+    { "name": "VS Code", "wingetId": "Microsoft.VisualStudioCode", "profiles": ["all", "avionics", "vehicle"],
+      "exe": ["%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "%ProgramFiles%\\Microsoft VS Code\\Code.exe"] },
+    { "name": "KiCad", "wingetId": "KiCad.KiCad", "profiles": ["all", "avionics"],
+      "exe": ["%ProgramFiles%\\KiCad\\*\\bin\\kicad.exe"] },
+    { "name": "STM32CubeIDE", "manual": true, "profiles": ["all", "avionics"],
+      "url": "https://www.st.com/en/development-tools/stm32cubeide.html",
+      "hint": "Inicia sesion (o crea cuenta) en ST, descarga 'STM32CubeIDE Windows Installer' e instalalo con las opciones por defecto.",
+      "exe": ["C:\\ST\\STM32CubeIDE_*\\STM32CubeIDE\\stm32cubeide.exe"] },
+    { "name": "MATLAB", "manual": true, "profiles": ["all", "avionics", "vehicle"],
+      "url": "https://www.uc3m.es/sdic/software/matlab",
+      "hint": "Entra en 'Portal MATLAB UC3M' con tu cuenta de la universidad, descarga MATLAB e incluye Simulink al instalar.",
+      "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] }
+  ],
+  "links": [
+    { "name": "GitHub - Ad Astra", "url": "https://github.com/Ad-Astra-UC3M" },
+    { "name": "CADLAB",            "url": "https://cadlab.io" },
+    { "name": "Onshape",           "url": "https://cad.onshape.com" },
+    { "name": "Teams",             "url": "https://teams.microsoft.com" }
+  ],
+  "cadlabUrl": "https://cadlab.io"
+}

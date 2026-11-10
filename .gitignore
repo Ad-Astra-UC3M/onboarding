@@ -1,0 +1,3 @@
+# Member lists contain personal data: never commit them
+*.csv
+setup-log.txt

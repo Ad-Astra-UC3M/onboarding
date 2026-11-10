@@ -37,7 +37,7 @@ Escritorio\Ad Astra\
 └── setup-log.txt
 ```
 
-**`Update all repositories.cmd`** (doble clic) descarga los últimos cambios de GitHub en todos tus repos (también desde `Apps\Update all repositories`). Solo hace `git pull`: no sube nada y no toca los repos donde tengas cambios sin commit.
+**`Update all repositories.cmd`** (doble clic) descarga los últimos cambios de GitHub en todos tus repos (también desde `Apps\Update all repos`). Solo hace `git pull`: no sube nada y no toca los repos donde tengas cambios sin commit.
 
 ## Opciones
 

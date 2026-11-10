@@ -704,7 +704,7 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
             }
             $pull = Join-Path $Root 'Update all repositories.cmd'
             if (Test-Path -LiteralPath $pull) {
-                $shortcut = $shell.CreateShortcut((Join-Path $appsDir 'Update all repositories.lnk'))
+                $shortcut = $shell.CreateShortcut((Join-Path $appsDir 'Update all repos.lnk'))
                 $shortcut.TargetPath = $pull
                 $shortcut.Arguments = ''
                 $shortcut.WorkingDirectory = $Root

@@ -56,6 +56,8 @@ Otros parámetros: `-SkipInstall` (no instala apps), `-InstallProfile all|avioni
 - **"No encuentro winget"**: actualiza *Instalador de aplicación* en Microsoft Store y repite el comando.
 - **"Falta Git o GitHub CLI" justo después de instalar**: cierra PowerShell, ábrelo de nuevo y repite el comando.
 - **"Todavía no eres miembro"**: tu cuenta de GitHub tiene que usar el mismo correo de la UC3M al que se envió la invitación. Si no te ha llegado, pídesela a tu lead.
+- **"No puedo escribir en setup-log.txt" o "No pude mover" un repo**: algunos antivirus (Avast, AVG) protegen el Escritorio y bloquean a PowerShell. No es grave: el setup sigue. Si quieres evitarlo, permite PowerShell en el escudo de ransomware del antivirus.
+- **SourceTree pide iniciar sesión al abrirlo**: sáltate el de Bitbucket; tus repos ya aparecen en la barra lateral y GitHub ya está conectado.
 - **Un repo "no se pudo actualizar"**: tienes cambios locales o estás en una rama sin remoto. Ábrelo en SourceTree.
 
 ## Para leads

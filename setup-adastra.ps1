@@ -56,7 +56,15 @@ $DefaultRawBase = 'https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/ma
 # ----------------------------------------------------------------------------
 function Write-Log([string]$Text) {
     if ($script:LogPath) {
-        try { Add-Content -LiteralPath $script:LogPath -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8 -ErrorAction Stop } catch { }
+        try { Add-Content -LiteralPath $script:LogPath -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8 -ErrorAction Stop }
+        catch {
+            # Seen with Avast's ransomware shield: it blocks PowerShell from
+            # changing files on the Desktop. Warn once and carry on.
+            if (-not $script:LogWarned) {
+                $script:LogWarned = $true
+                Write-Host "   [!]  No puedo escribir en setup-log.txt. Si tu antivirus protege el Escritorio (Avast, AVG...), puede estar bloqueando a PowerShell. El setup sigue igualmente." -ForegroundColor Yellow
+            }
+        }
     }
 }
 function Write-Step([string]$Text) { Write-Host ""; Write-Host "== $Text" -ForegroundColor Cyan; Write-Log "== $Text" }
@@ -495,7 +503,7 @@ function Sync-Repositories($Config, $Member, [string]$Root) {
                 if ($other -ne $target -and (Test-Path -LiteralPath (Join-Path $other '.git'))) {
                     if ($DryRun) { Write-Info "(dry-run) movería $other -> $target"; break }
                     try { Move-Item -LiteralPath $other -Destination $target -ErrorAction Stop; Write-Info "$repoName movido a $(Split-Path -Leaf $targetDir)" }
-                    catch { Write-Warn "No pude mover $repoName (¿está abierto en algún programa?). Lo dejo donde está."; $target = $other }
+                    catch { Write-Warn "No pude mover $repoName (¿está abierto en algún programa o lo bloquea tu antivirus?). Lo dejo donde está."; $target = $other }
                     break
                 }
             }
@@ -539,6 +547,109 @@ function Install-PullAll($Config, [string]$Root) {
         Write-Ok "pull-all.ps1 copiado (actualiza todos los repositorios de golpe)"
     } catch {
         Write-Warn "No pude copiar pull-all.ps1: $($_.Exception.Message)"
+    }
+}
+
+function New-BookmarkNode($Doc, [bool]$IsFolder, [int]$Level, [string]$NodeName, [string]$RepoPath) {
+    # One entry of SourceTree's bookmarks.xml. The element order matters:
+    # SourceTree reads the file with XmlSerializer.
+    $node = $Doc.CreateElement('TreeViewNode')
+    $attr = $Doc.CreateAttribute('xsi', 'type', 'http://www.w3.org/2001/XMLSchema-instance')
+    if ($IsFolder) { $attr.Value = 'BookmarkFolderNode' } else { $attr.Value = 'BookmarkNode' }
+    [void]$node.Attributes.Append($attr)
+    $fields = @(
+        @('Level', "$Level"),
+        @('IsExpanded', "$IsFolder".ToLower()),
+        @('IsLeaf', "$(-not $IsFolder)".ToLower()),
+        @('Name', $NodeName),
+        @('Children', $null)
+    )
+    if (-not $IsFolder) { $fields += , @('Path', $RepoPath); $fields += , @('RepoType', 'Git') }
+    foreach ($field in $fields) {
+        $element = $Doc.CreateElement($field[0])
+        if ($null -ne $field[1]) { $element.InnerText = $field[1] }
+        [void]$node.AppendChild($element)
+    }
+    return $node
+}
+
+function Set-SourceTreeBookmarks($Config, [string]$Root) {
+    # Adds the cloned repositories to SourceTree's sidebar, grouped like the
+    # folders on disk. Only adds what is missing; existing bookmarks are kept.
+    # (The format is not documented by Atlassian; verified with SourceTree 3.4.)
+    if (-not $script:OnWindows -or -not $env:LOCALAPPDATA) { return }
+    if (-not (Find-Exe (@($Config.apps | Where-Object { $_.name -eq 'SourceTree' })[0]))) { return }
+
+    $groups = @()
+    foreach ($folderName in @($Config.myReposFolder, $Config.teamReposFolder)) {
+        $dir = Join-Path $Root $folderName
+        $repoDirs = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') } | Sort-Object Name)
+        if ($repoDirs.Count -gt 0) { $groups += , @($folderName, $repoDirs) }
+    }
+    if ($groups.Count -eq 0) { return }
+    if ($DryRun) { Write-Info "(dry-run) añadiría los repositorios a SourceTree"; return }
+    if (Get-Process -Name 'SourceTree' -ErrorAction SilentlyContinue) {
+        # SourceTree rewrites the file when it closes, so our changes would be lost.
+        Write-Warn "SourceTree está abierto: ciérralo y vuelve a ejecutar el setup para añadirle los repositorios."
+        return
+    }
+
+    $bookmarkDir = Join-Path (Join-Path $env:LOCALAPPDATA 'Atlassian') 'SourceTree'
+    $file = Join-Path $bookmarkDir 'bookmarks.xml'
+    try {
+        $doc = New-Object System.Xml.XmlDocument
+        if (Test-Path -LiteralPath $file) {
+            $doc.Load($file)
+        } else {
+            New-FolderIfMissing $bookmarkDir
+            $doc.LoadXml('<?xml version="1.0" encoding="utf-8"?><ArrayOfTreeViewNode xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" />')
+        }
+        if ($doc.DocumentElement.Name -ne 'ArrayOfTreeViewNode') { throw "formato inesperado en bookmarks.xml" }
+
+        # Drop bookmarks of repositories under this folder that are gone (moved to the other group).
+        $changed = $false
+        $prefix = ($Root.TrimEnd('\') + '\').ToLower()
+        $known = @{}
+        foreach ($pathNode in @($doc.SelectNodes('//TreeViewNode/Path'))) {
+            $bookmarked = $pathNode.InnerText.TrimEnd('\')
+            if ($bookmarked.ToLower().StartsWith($prefix) -and -not (Test-Path -LiteralPath $bookmarked)) {
+                $stale = $pathNode.ParentNode
+                [void]$stale.ParentNode.RemoveChild($stale)
+                $changed = $true
+                continue
+            }
+            $known[$bookmarked.ToLower()] = $true
+        }
+
+        $added = 0
+        foreach ($group in $groups) {
+            $missing = @($group[1] | Where-Object { -not $known.ContainsKey($_.FullName.TrimEnd('\').ToLower()) })
+            if ($missing.Count -eq 0) { continue }
+            $folderNode = $null
+            foreach ($candidate in @($doc.DocumentElement.SelectNodes('TreeViewNode'))) {
+                $nameNode = $candidate.SelectSingleNode('Name')
+                $isLeaf = $candidate.SelectSingleNode('IsLeaf')
+                if ($nameNode -and $nameNode.InnerText -eq $group[0] -and $isLeaf -and $isLeaf.InnerText -eq 'false') { $folderNode = $candidate; break }
+            }
+            if (-not $folderNode) {
+                $folderNode = New-BookmarkNode $doc $true 0 $group[0] ''
+                [void]$doc.DocumentElement.AppendChild($folderNode)
+            }
+            $children = $folderNode.SelectSingleNode('Children')
+            foreach ($repoDir in $missing) {
+                [void]$children.AppendChild((New-BookmarkNode $doc $false 1 $repoDir.Name $repoDir.FullName))
+                $added++
+            }
+        }
+        if ($added -gt 0 -or $changed) { $doc.Save($file) }
+        if ($added -gt 0) { Write-Ok "$added repositorios añadidos a SourceTree" }
+        else { Write-Ok "SourceTree ya tiene todos los repositorios" }
+        Write-Info "Aviso: la primera vez que abras SourceTree verás un asistente de bienvenida. Puedes saltarte"
+        Write-Info "el inicio de sesión de Bitbucket; tu nombre, tu correo y el acceso a GitHub ya están configurados."
+        Write-Info "Si en algún momento te pide iniciar sesión en GitHub, hazlo con tu cuenta en el navegador."
+    } catch {
+        Write-Warn "No pude añadir los repositorios a SourceTree (puedes arrastrar las carpetas a su ventana): $($_.Exception.Message)"
     }
 }
 
@@ -669,6 +780,7 @@ function Invoke-AdAstraSetup {
     Install-PullAll $config $root
     [void](Invoke-ManualApps $config $member)
     Set-MatlabMerge $config
+    Set-SourceTreeBookmarks $config $root
     New-Shortcuts $config $member $root
     Confirm-Cadlab $config
     Show-Summary $root

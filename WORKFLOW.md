@@ -73,9 +73,10 @@ The rules, in order of importance:
    approved by the Team Lead of that project. GitHub enforces this with branch protection.
 2. **One branch per task, normally one per design week.** Use common sense: do not create a branch per
    small change, but two different parts of the code means two branches.
-   Name: `<name>/d<week>` in lowercase, e.g. `lucas/d2` (design week 2). For something specific, or a second
-   branch the same week, add one or two words: `lucas/d2-test-benches`, `lucas/d2-power-stage`.
-   (Do not use `lucas/d2/test-benches`: Git cannot have `lucas/d2` and `lucas/d2/...` at the same time.)
+   Name: `<name>-d<week>`, e.g. `lucas-d2` (design week 2). For something specific, or a second branch the
+   same week, add one or two words joined with capitals: `lucas-d2-TestBenches`, `lucas-d2-PowerStage`.
+   Naming convention everywhere (GitHub and Onshape): parts separated by hyphens, words joined with capitals,
+   no spaces, no underscores.
 3. **Commit often and push the branch** to GitHub as a backup, even if the work is unfinished.
 4. **At the end of the week** (or when the piece of work is done), open a PR from the branch to `main`,
    with a short description of what changed and the Team Lead as reviewer.
@@ -87,11 +88,11 @@ Typical week in commands (SourceTree buttons do the same):
 ```bash
 git checkout main
 git pull                              # start from the latest main
-git checkout -b lucas/d2-power-stage  # this week's branch
+git checkout -b lucas-d2-PowerStage  # this week's branch
 # ... work ...
 git add <files>
 git commit -m "Add 3V3 regulator to power stage"
-git push -u origin lucas/d2-power-stage  # first push; later just: git push
+git push -u origin lucas-d2-PowerStage  # first push; later just: git push
 # end of week: open a PR on GitHub (Compare & pull request), reviewer = Team Lead
 ```
 
@@ -99,7 +100,7 @@ If `main` changed while working, bring it into the branch before opening the PR:
 
 ```bash
 git checkout main && git pull
-git checkout lucas/d2-power-stage
+git checkout lucas-d2-PowerStage
 git merge main                        # resolve conflicts if any, then commit and push
 ```
 
@@ -123,8 +124,14 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
 
 ## 6. Other tools (not in GitHub)
 
-- **Mechanical CAD:** Onshape. The live CAD stays in Onshape and uses Onshape versions and branches
-  (naming such as `W3_ID`, `W3_ID_Thickness_3`); see the Version Control Workflow document.
+- **Mechanical CAD:** Onshape, used like GitHub for CAD. Same weekly logic: each member works in their own
+  branch named `<name>-d<week>-<part number>-<Description>` (e.g. `jorge-d2-10101-ThicknessStudy`), saves
+  versions as save points with intuitive names (`Thickness30`, `Thickness15`) and a real description of what
+  changed, and tells the Team Lead at the end of the week. Only the Team Lead merges into Main (weekly meeting
+  or with the Vehicle Engineering lead's permission); Main then gets a version named after the week (`D2`).
+  Nobody works directly on Main. A second study branches from the best version of the first.
+  Part numbering: `1-Structures` (system), `101-MainFrame` (subassembly), `10101-MainPlate` (part).
+  Geometry for CFD/FEA is exported (usually STEP) from the right version into the project's Teams folder.
 - **CFD and FEA:** simulation files are large and binary, so they live in the team's Microsoft Teams /
   OneDrive folder, never in GitHub.
 - **Controls (MATLAB/Simulink):** workflow still to be defined. Normal Git works for `.m`, `.slx` and

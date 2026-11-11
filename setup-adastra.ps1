@@ -49,6 +49,7 @@ $script:OnWindows = ($env:OS -eq 'Windows_NT')
 $script:Results = New-Object System.Collections.ArrayList
 $script:LogPath = $null
 $script:LoggedIn = $false
+$script:DeferredManual = @()
 $DefaultRawBase = 'https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/main'
 
 # ----------------------------------------------------------------------------
@@ -92,10 +93,12 @@ function Read-YesNo([string]$Question, [bool]$Default = $true) {
 
 function Read-Choice([string]$Title, $Options, [string]$Preset) {
     # $Options: objects with .key and .label. Returns the chosen object.
+    # Options marked "hidden" are never listed, but can still be chosen with a preset.
     if ($Preset) {
         $match = @($Options | Where-Object { $_.key -eq $Preset })
         if ($match.Count -gt 0) { return $match[0] }
     }
+    $Options = @($Options | Where-Object { -not $_.hidden })
     Write-Host ""
     Write-Host "   $Title"
     for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host ("     {0}) {1}" -f ($i + 1), $Options[$i].label) }
@@ -132,10 +135,20 @@ function Find-Exe($App) {
         $found = @(Get-Item -Path $expanded -ErrorAction SilentlyContinue | Sort-Object FullName)
         if ($found.Count -gt 0) { return $found[$found.Count - 1].FullName }
     }
-    # Not in the usual place (installed to another folder or drive): look for a
-    # Start Menu shortcut that points to the same program file.
     $leafs = @(@($App.exe) | Where-Object { $_ } | ForEach-Object { (Split-Path -Leaf $_).ToLower() })
     if ($leafs.Count -eq 0) { return $null }
+    # Installed somewhere else: ask the uninstall entry in the registry (only
+    # trusted when the file name matches; MSI icons are also called *.exe).
+    $entry = Find-UninstallEntry $App
+    if ($entry) {
+        $candidates = @()
+        if ($entry.InstallLocation) { foreach ($leaf in $leafs) { $candidates += (Join-Path "$($entry.InstallLocation)".Trim('"') $leaf) } }
+        if ($entry.DisplayIcon) { $candidates += ("$($entry.DisplayIcon)" -replace ',\s*-?\d+$', '').Trim('"') }
+        foreach ($candidate in $candidates) {
+            if (($leafs -contains (Split-Path -Leaf $candidate).ToLower()) -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+        }
+    }
+    # Last resort: a Start Menu shortcut that points to the same program file.
     foreach ($target in @(Get-StartMenuTargets)) {
         if ($leafs -contains (Split-Path -Leaf $target).ToLower()) { return $target }
     }
@@ -158,9 +171,43 @@ function Get-StartMenuTargets {
     return $script:StartMenuTargets
 }
 
+function Get-UninstallEntries {
+    # Programs listed in "Apps & features" (machine, 32-bit and per-user), read once per run.
+    if ($null -ne $script:UninstallEntries) { return $script:UninstallEntries }
+    $script:UninstallEntries = @()
+    if (-not $script:OnWindows) { return $script:UninstallEntries }
+    $keys = @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+              'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+              'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')
+    $script:UninstallEntries = @(Get-ItemProperty -Path $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName })
+    return $script:UninstallEntries
+}
+
+function Find-UninstallEntry($App) {
+    if (-not $App.uninstallName) { return $null }
+    $pattern = "$($App.uninstallName)*"
+    $match = @(Get-UninstallEntries | Where-Object { $_.DisplayName -like $pattern })
+    if ($match.Count -gt 0) { return $match[0] }
+    return $null
+}
+
+function Reset-AppCache {
+    # Call after installing something, so the next checks see it.
+    $script:StartMenuTargets = $null
+    $script:UninstallEntries = $null
+    Update-SessionPath
+}
+
+function Test-NetFx3 {
+    # .NET Framework 3.5 (needed by RASAero II); not enabled by default on Windows 10/11.
+    $key = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
+    return ($key -and $key.Install -eq 1)
+}
+
 function Test-AppInstalled($App) {
     if ($App.command -and (Test-Command $App.command)) { return $true }
     if (Find-Exe $App) { return $true }
+    if (Find-UninstallEntry $App) { return $true }
     if ($App.wingetId -and (Test-Command 'winget')) {
         & winget list --id $App.wingetId -e --source winget --accept-source-agreements 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { return $true }
@@ -256,24 +303,41 @@ function Get-MemberData($Config) {
     }
     $memberEmail = $memberEmail.Trim().ToLower()
 
-    $chosenProfile = Read-Choice '¿Qué quieres instalar?' @($Config.profiles) $InstallProfile
+    # The project comes first: some projects (Jet Engine) fix the profile and have no areas.
     $chosenProject = Read-Choice '¿En qué proyecto estás?' @($Config.projects) $Project
-    $chosenArea = Read-Choice '¿Cuál es tu área principal?' @($Config.areas) $Area
-    Write-Info "(Proyecto y área solo ordenan tus carpetas: tendrás todos los repositorios igualmente.)"
+    $chosenProfile = $null
+    if ($chosenProject.installProfile) {
+        $chosenProfile = @($Config.profiles | Where-Object { $_.key -eq $chosenProject.installProfile })[0]
+    }
+    if (-not $chosenProfile) { $chosenProfile = Read-Choice '¿Qué quieres instalar?' @($Config.profiles) $InstallProfile }
+    $chosenArea = $null
+    if ($chosenProject.noArea) {
+        Write-Info "$($chosenProject.label): instalo lo básico y todos los repositorios van a '$($Config.teamReposFolder)'."
+    } else {
+        $chosenArea = Read-Choice '¿Cuál es tu área principal?' @($Config.areas) $Area
+        Write-Info "(Proyecto y área solo ordenan tus carpetas: tendrás todos los repositorios igualmente.)"
+    }
+    $where = $chosenProject.label
+    if ($chosenArea) { $where = "$where / $($chosenArea.label)" }
 
-    Write-Ok "$memberName <$memberEmail> | $($chosenProfile.label) | $($chosenProject.label) / $($chosenArea.label)"
-    Add-Result 'Datos' 'OK' "$($chosenProject.label) / $($chosenArea.label)"
+    Write-Ok "$memberName <$memberEmail> | $($chosenProfile.label) | $where"
+    Add-Result 'Datos' 'OK' $where
     return [pscustomobject]@{ Name = $memberName; Email = $memberEmail; Profile = $chosenProfile; Project = $chosenProject; Area = $chosenArea }
 }
 
 # ----------------------------------------------------------------------------
 # Step 3 - automatic installs (winget)
 # ----------------------------------------------------------------------------
-function Install-Apps($Config, $Member) {
+function Install-Apps($Config, $Member, [string]$Root) {
     Write-Step "3/8 Instalación de aplicaciones"
+    $profileKey = $Member.Profile.key
+    $selected = @($Config.apps | Where-Object { $_.profiles -contains $profileKey })
+    $names = @($selected | ForEach-Object { $_.name })
+    $names += @($Config.vscodeExtensions | Where-Object { $_.profiles -contains $profileKey } | ForEach-Object { "$($_.name) (VS Code)" })
+    Write-Info "Perfil '$profileKey': $($names -join ', ')"
     if ($SkipInstall) { Write-Info "Saltado (-SkipInstall)."; Add-Result 'Apps' 'Saltado' '-SkipInstall'; return }
 
-    $apps = @($Config.apps | Where-Object { $_.wingetId -and ($_.profiles -contains $Member.Profile.key) })
+    $apps = @($selected | Where-Object { $_.wingetId })
     $failed = @()
     foreach ($app in $apps) {
         if (Test-AppInstalled $app) { Write-Ok "$($app.name) ya está instalado"; continue }
@@ -291,8 +355,116 @@ function Install-Apps($Config, $Member) {
             $failed += $app.name
         }
     }
+    # Apps with an official installer that is not in winget (OpenRocket,
+    # RASAero II). Antivirus programs (Avast, AVG...) stop PowerShell when it
+    # downloads and runs an installer, and kill the whole setup. So the setup
+    # never runs them: step 8 opens the download in the browser, the member
+    # installs it and the setup checks the result.
+    foreach ($app in @($selected | Where-Object { $_.download })) {
+        if (Test-AppInstalled $app) { Write-Ok "$($app.name) ya está instalado"; continue }
+        if ($DryRun) { Write-Info "(dry-run) pediría instalar $($app.name) a mano: abriría $(Get-DownloadUrl $app.download)"; continue }
+        Write-Info "$($app.name): lo instalas tú en el último paso (te abro la descarga en el navegador)."
+        $script:DeferredManual += $app
+    }
+    $failed += @(Install-PortableApps $Config $Member $Root)
     $failed += @(Install-CodeExtensions $Config $Member)
     if ($failed.Count -gt 0) { Add-Result 'Apps' 'Fallo' ($failed -join ', ') } else { Add-Result 'Apps' 'OK' '' }
+}
+
+function Get-RawBase($Config) {
+    if ($Config.rawBase) { return $Config.rawBase }
+    return $DefaultRawBase
+}
+
+function Save-Url([string]$Url, [string]$Path) {
+    # Downloads to "<file>.part" first, so an interrupted download never looks finished.
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $partial = "$Path.part"
+    $oldProgress = $ProgressPreference
+    # The progress bar makes Invoke-WebRequest many times slower in 5.1.
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $partial -UseBasicParsing -ErrorAction Stop
+        Move-Item -LiteralPath $partial -Destination $Path -Force -ErrorAction Stop
+    } finally {
+        $ProgressPreference = $oldProgress
+        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-DownloadUrl($Download) {
+    # "githubRepo" + "assetPattern": newest release on GitHub; "url" is the fallback.
+    if ($Download.githubRepo -and $Download.assetPattern) {
+        try {
+            try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$($Download.githubRepo)/releases/latest" -UseBasicParsing -Headers @{ 'User-Agent' = 'AdAstraSetup' } -ErrorAction Stop
+            $asset = @($release.assets | Where-Object { $_.name -match $Download.assetPattern })
+            if ($asset.Count -gt 0) { return $asset[0].browser_download_url }
+        } catch { }
+    }
+    return $Download.url
+}
+
+function Get-BrowserDownloadUrl($Config, $Download) {
+    # The link the browser opens. If the official site does not answer and there
+    # is a copy in this repository ("mirror"), use the copy. Only checks the
+    # link (HEAD request); nothing is downloaded or run here.
+    $url = Get-DownloadUrl $Download
+    if (-not $Download.mirror) { return $url }
+    try {
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+        $response = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+        if ($response.StatusCode -lt 400) { return $url }
+    } catch { }
+    return "$(Get-RawBase $Config)/$($Download.mirror)"
+}
+
+function Test-PortableApp($App, [string]$Root) {
+    $dest = Join-Path (Join-Path $Root 'Apps') $App.portable.dest
+    foreach ($fileName in @($App.portable.files)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $dest $fileName))) { return $false }
+    }
+    return $true
+}
+
+function Install-PortableApps($Config, $Member, [string]$Root) {
+    # Programs that are not installed, only copied: their files live in this
+    # repository ("portable.repoPath") and go to Apps\<portable.dest>.
+    # Existing files are never replaced. If the copy fails or an antivirus
+    # removes the file, step 8 asks the member to download it by hand.
+    $base = Get-RawBase $Config
+    foreach ($app in @($Config.apps | Where-Object { $_.portable -and ($_.profiles -contains $Member.Profile.key) })) {
+        $dest = Join-Path (Join-Path $Root 'Apps') $app.portable.dest
+        $missing = @(@($app.portable.files) | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dest $_)) })
+        if ($missing.Count -eq 0) { Write-Ok "$($app.name) ya está en Apps\$($app.portable.dest)"; continue }
+        if ($DryRun) { Write-Info "(dry-run) copiaría $($app.name) ($($missing -join ', ')) a $dest"; continue }
+        try {
+            [void](New-Item -ItemType Directory -Path $dest -Force -ErrorAction Stop)
+            foreach ($fileName in $missing) {
+                $target = Join-Path $dest $fileName
+                $local = $null
+                if ($script:ScriptDir) { $local = Join-Path (Join-Path $script:ScriptDir $app.portable.repoPath) $fileName }
+                if ($local -and (Test-Path -LiteralPath $local)) {
+                    Copy-Item -LiteralPath $local -Destination $target -ErrorAction Stop
+                } else {
+                    Save-Url "$base/$($app.portable.repoPath)/$fileName" $target
+                }
+                # Downloaded files are marked as "from the internet"; without this
+                # Windows warns every time the program is opened.
+                Unblock-File -LiteralPath $target -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Write-Warn "No pude copiar $($app.name): $($_.Exception.Message)"
+        }
+        # An antivirus may delete the file a moment after it is written.
+        Start-Sleep -Seconds 2
+        if (Test-PortableApp $app $Root) {
+            Write-Ok "$($app.name) copiado en Apps\$($app.portable.dest)"
+        } else {
+            Write-Warn "$($app.name) no ha quedado copiado (puede que tu antivirus lo haya bloqueado): lo descargas tú en el último paso."
+            $script:DeferredManual += $app
+        }
+    }
 }
 
 function Get-CodeCli($Config) {
@@ -511,8 +683,11 @@ function Sync-Repositories($Config, $Member, [string]$Root) {
     }
     $repos = @(("$json" | ConvertFrom-Json) | Sort-Object name)
 
+    # The member's own repository: <project prefix><area suffix>, e.g. rocket-a4-simulation.
+    # If it does not exist (e.g. model-satellite-simulation), everything goes to Team.
     $mine = ''
-    if ($Member.Area.repoSuffix) { $mine = "$($Member.Project.repoPrefix)$($Member.Area.repoSuffix)" }
+    if ($Member.Area -and $Member.Area.repoSuffix -and $Member.Project.repoPrefix) { $mine = "$($Member.Project.repoPrefix)$($Member.Area.repoSuffix)" }
+    if ($mine -and -not @($repos | Where-Object { $_.name -eq $mine })) { $mine = '' }
 
     $cloned = 0; $updated = 0; $skipped = 0; $failed = 0
     foreach ($repo in $repos) {
@@ -550,7 +725,7 @@ function Sync-Repositories($Config, $Member, [string]$Root) {
             else { Write-Err "No se pudo clonar $repoName"; $failed++ }
         }
     }
-    if (-not $mine) { Write-Info "Tu área no tiene repositorio propio en GitHub: tienes todos en '$($Config.teamReposFolder)'." }
+    if (-not $mine) { Write-Info "Tu proyecto o área no tiene repositorio propio en GitHub: tienes todos en '$($Config.teamReposFolder)'." }
     $detail = "$cloned clonados, $updated actualizados, $skipped sin tocar, $failed con fallo"
     if ($DryRun) { Add-Result 'Repositorios' 'Saltado' "dry-run ($($repos.Count) repos)" }
     elseif ($failed -gt 0) { Add-Result 'Repositorios' 'Fallo' $detail }
@@ -702,6 +877,23 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
                 $shortcut.Save()
                 $made++
             }
+            # Copied programs (OSCALC): one shortcut per listed file. Existing
+            # shortcuts are left as they are.
+            foreach ($app in @($Config.apps | Where-Object { $_.portable })) {
+                $dir = Join-Path $appsDir $app.portable.dest
+                foreach ($entry in @($app.shortcuts)) {
+                    $target = Join-Path $dir $entry.file
+                    $lnk = Join-Path $appsDir "$($entry.name).lnk"
+                    if (-not (Test-Path -LiteralPath $target)) { continue }
+                    if (-not (Test-Path -LiteralPath $lnk)) {
+                        $shortcut = $shell.CreateShortcut($lnk)
+                        $shortcut.TargetPath = $target
+                        $shortcut.WorkingDirectory = $dir
+                        $shortcut.Save()
+                    }
+                    $made++
+                }
+            }
             $pull = Join-Path $Root 'Update all repositories.cmd'
             if (Test-Path -LiteralPath $pull) {
                 $shortcut = $shell.CreateShortcut((Join-Path $appsDir 'Update all repos.lnk'))
@@ -721,22 +913,61 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
 # ----------------------------------------------------------------------------
 # Step 8 - manual apps, CADLAB and summary
 # ----------------------------------------------------------------------------
-function Invoke-ManualApps($Config, $Member) {
+function Invoke-ManualApps($Config, $Member, [string]$Root) {
     Write-Step "8/8 Últimos pasos"
     $pending = @()
     if ($SkipInstall) { return $pending }
-    foreach ($app in @($Config.apps | Where-Object { $_.manual -and ($_.profiles -contains $Member.Profile.key) })) {
-        if (Find-Exe $app) { Write-Ok "$($app.name) ya está instalado"; continue }
+    # Manual apps of the profile, plus the ones step 3 left for the member:
+    # official installers (opened in the browser) and copies that failed.
+    $todo = @($Config.apps | Where-Object { $_.manual -and ($_.profiles -contains $Member.Profile.key) })
+    $todo += @($script:DeferredManual)
+    foreach ($app in $todo) {
+        if ($app.portable) {
+            if (Test-PortableApp $app $Root) { Write-Ok "$($app.name) ya está en Apps\$($app.portable.dest)"; continue }
+        } elseif (Test-AppInstalled $app) { Write-Ok "$($app.name) ya está instalado"; continue }
         if ($DryRun) { Write-Info "(dry-run) pediría instalar $($app.name) desde $($app.url)"; continue }
         Write-Host ""
-        Write-Warn "$($app.name) no se puede instalar automáticamente."
-        Write-Info $app.hint
-        Open-Url $app.url
+        $dest = $null
+        if ($app.manual) {
+            Write-Warn "$($app.name) no se puede instalar automáticamente."
+            Write-Info $app.hint
+            Open-Url $app.url
+        } elseif ($app.portable) {
+            # The copy failed or an antivirus removed it: the browser can still
+            # download the files from GitHub.
+            $dest = Join-Path (Join-Path $Root 'Apps') $app.portable.dest
+            [void](New-Item -ItemType Directory -Path $dest -Force -ErrorAction SilentlyContinue)
+            Write-Warn "$($app.name): descárgalo tú. Te abro su página en GitHub y la carpeta donde tiene que ir."
+            Write-Info "Descarga estos archivos (botón 'Download raw file') y guárdalos en $dest :"
+            Write-Info "  $(@($app.portable.files) -join ', ')"
+            Write-Info "Si tu antivirus los bloquea, márcalos como seguros: vienen del repositorio del equipo."
+            Open-Url "https://github.com/$($Config.org)/onboarding/tree/main/$($app.portable.repoPath)"
+            try { Start-Process 'explorer.exe' -ArgumentList "`"$dest`"" -ErrorAction Stop } catch { }
+        } else {
+            # Official installer: the browser downloads it (antivirus programs
+            # trust browser downloads, not scripts that run installers).
+            Write-Warn "$($app.name) lo instalas tú: tu antivirus podría cortar el setup si lo instalo yo."
+            if ($app.download.needsNetFx3 -and -not (Test-NetFx3)) {
+                Write-Info "Primero: $($app.name) necesita .NET Framework 3.5. Te abro 'Características de Windows':"
+                Write-Info "marca '.NET Framework 3.5', pulsa Aceptar y deja que Windows lo descargue."
+                try { Start-Process 'optionalfeatures.exe' -ErrorAction Stop } catch { Write-Info "Ábrelo tú: menú Inicio, escribe 'Activar o desactivar las características de Windows'." }
+            }
+            Write-Info "Te abro la descarga en el navegador. Cuando termine, ábrela desde Descargas."
+            Write-Info $app.hint
+            Write-Info "Si la descarga no empieza, entra en $($app.url)"
+            $direct = Get-BrowserDownloadUrl $Config $app.download
+            if ($direct) { Open-Url $direct } else { Open-Url $app.url }
+        }
         $done = $false
         for ($try = 0; -not $done -and $try -lt 4; $try++) {
             $answer = "$(Read-Host "   Pulsa Enter cuando $($app.name) esté instalado (o escribe S para dejarlo para luego)")".Trim().ToLower()
             if ($answer -eq 's') { break }
-            if (Find-Exe $app) { $done = $true } else { Write-Warn "No lo encuentro todavía. Termina la instalación y pulsa Enter." }
+            Reset-AppCache
+            if ($app.portable) {
+                $done = Test-PortableApp $app $Root
+                if ($done) { foreach ($fileName in @($app.portable.files)) { Unblock-File -LiteralPath (Join-Path $dest $fileName) -ErrorAction SilentlyContinue } }
+            } else { $done = Test-AppInstalled $app }
+            if (-not $done) { Write-Warn "No lo encuentro todavía. Termina y pulsa Enter." }
         }
         if ($done) { Write-Ok "$($app.name) instalado" } else { $pending += $app.name }
     }
@@ -809,13 +1040,13 @@ function Invoke-AdAstraSetup {
         Write-Log "---- Setup iniciado ($($member.Profile.key), $($member.Project.key)/$($member.Area.key)) ----"
     }
 
-    Install-Apps $config $member
+    Install-Apps $config $member $root
     Connect-GitHub $member
     Confirm-Membership $config $member $script:LoggedIn
     Set-GitConfiguration $config $member
     Sync-Repositories $config $member $root
     Install-PullAll $config $root
-    [void](Invoke-ManualApps $config $member)
+    [void](Invoke-ManualApps $config $member $root)
     Set-MatlabMerge $config
     Set-SourceTreeBookmarks $config $root
     New-Shortcuts $config $member $root

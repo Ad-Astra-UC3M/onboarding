@@ -1,1 +1,4 @@
 *.cmd -text
+*.exe binary
+*.pdf binary
+*.zip binary

@@ -7,24 +7,26 @@
   "profiles": [
     { "key": "all",      "label": "Todo (recomendado)" },
     { "key": "avionics", "label": "Avionics (hardware, software, controls)" },
-    { "key": "vehicle",  "label": "Vehicle Engineering (estructuras, CFD/FEA)" }
+    { "key": "vehicle",  "label": "Vehicle Engineering (estructuras, simulacion de vuelo, CFD/FEA)" },
+    { "key": "base",     "label": "Basico (Git, GitHub CLI, SourceTree, VS Code)", "hidden": true }
   ],
   "projects": [
     { "key": "rocket",    "label": "Rocket A4",               "repoPrefix": "rocket-a4-" },
-    { "key": "satellite", "label": "Model Satellite (SiGMA)", "repoPrefix": "model-satellite-" }
+    { "key": "satellite", "label": "Model Satellite (SiGMA)", "repoPrefix": "model-satellite-" },
+    { "key": "jet",       "label": "Jet Engine",              "repoPrefix": "", "installProfile": "base", "noArea": true }
   ],
   "areas": [
     { "key": "hardware",   "label": "Hardware",    "repoSuffix": "hardware" },
     { "key": "software",   "label": "Software",    "repoSuffix": "software" },
     { "key": "controls",   "label": "Controls",    "repoSuffix": "controls" },
-    { "key": "structures", "label": "Estructuras", "repoSuffix": "" }
+    { "key": "structures", "label": "Estructuras", "repoSuffix": "simulation" }
   ],
   "apps": [
-    { "name": "Git",        "wingetId": "Git.Git",    "command": "git", "profiles": ["all", "avionics", "vehicle"], "exe": [] },
-    { "name": "GitHub CLI", "wingetId": "GitHub.cli", "command": "gh",  "profiles": ["all", "avionics", "vehicle"], "exe": [] },
-    { "name": "SourceTree", "wingetId": "Atlassian.Sourcetree", "profiles": ["all", "avionics", "vehicle"],
+    { "name": "Git",        "wingetId": "Git.Git",    "command": "git", "profiles": ["all", "avionics", "vehicle", "base"], "exe": [] },
+    { "name": "GitHub CLI", "wingetId": "GitHub.cli", "command": "gh",  "profiles": ["all", "avionics", "vehicle", "base"], "exe": [] },
+    { "name": "SourceTree", "wingetId": "Atlassian.Sourcetree", "profiles": ["all", "avionics", "vehicle", "base"],
       "exe": ["%LOCALAPPDATA%\\SourceTree\\SourceTree.exe"] },
-    { "name": "VS Code", "wingetId": "Microsoft.VisualStudioCode", "profiles": ["all", "avionics", "vehicle"],
+    { "name": "VS Code", "wingetId": "Microsoft.VisualStudioCode", "profiles": ["all", "avionics", "vehicle", "base"],
       "exe": ["%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "%ProgramFiles%\\Microsoft VS Code\\Code.exe"] },
     { "name": "KiCad", "wingetId": "KiCad.KiCad", "profiles": ["all", "avionics"],
       "exe": ["%ProgramFiles%\\KiCad\\*\\bin\\kicad.exe", "%LOCALAPPDATA%\\Programs\\KiCad\\*\\bin\\kicad.exe"] },
@@ -32,10 +34,32 @@
       "url": "https://www.st.com/en/development-tools/stm32cubeide.html",
       "hint": "Inicia sesion (o crea cuenta) en ST, descarga 'STM32CubeIDE Windows Installer' e instalalo con las opciones por defecto.",
       "exe": ["C:\\ST\\STM32CubeIDE_*\\STM32CubeIDE\\stm32cubeide.exe"] },
+    { "name": "STM32CubeMX", "manual": true, "profiles": ["all", "avionics"],
+      "url": "https://www.st.com/en/development-tools/stm32cubemx.html",
+      "hint": "Desde STM32CubeIDE 2.0 no viene incluido. Inicia sesion (o crea cuenta) en ST, descarga 'STM32CubeMX-Win', descomprime el zip y ejecuta el instalador con las opciones por defecto.",
+      "exe": ["%ProgramFiles%\\STMicroelectronics\\STM32Cube\\STM32CubeMX\\STM32CubeMX.exe", "%LOCALAPPDATA%\\Programs\\STM32CubeMX\\STM32CubeMX.exe"],
+      "uninstallName": "STM32CubeMX" },
     { "name": "MATLAB", "manual": true, "profiles": ["all", "avionics", "vehicle"],
       "url": "https://www.uc3m.es/sdic/software/matlab",
       "hint": "Entra en 'Portal MATLAB UC3M' con tu cuenta de la universidad, descarga MATLAB e incluye Simulink al instalar.",
-      "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] }
+      "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] },
+    { "name": "OpenRocket", "profiles": ["all", "vehicle"],
+      "download": { "githubRepo": "openrocket/openrocket", "assetPattern": "-installer-Windows-x86_64\\.exe$",
+                    "url": "https://github.com/openrocket/openrocket/releases/download/release-24.12/OpenRocket-24.12-installer-Windows-x86_64.exe" },
+      "url": "https://openrocket.info/downloads.html",
+      "hint": "Descarga el instalador de Windows de OpenRocket y ejecutalo con las opciones por defecto.",
+      "exe": ["%ProgramFiles%\\OpenRocket\\OpenRocket.exe", "%LOCALAPPDATA%\\Programs\\OpenRocket\\OpenRocket.exe"],
+      "uninstallName": "OpenRocket" },
+    { "name": "RASAero II", "profiles": ["all", "vehicle"],
+      "download": { "url": "https://www.rasaero.com/dloads/RASAero_II_Setup_Version_1.0.2.0.zip",
+                    "mirror": "tools/RASAero/RASAero_II_Setup_Version_1.0.2.0.zip", "needsNetFx3": true },
+      "url": "https://www.rasaero.com/dl_software_ii.htm",
+      "hint": "Descarga 'RASAero II', descomprime el zip y ejecuta el .msi con las opciones por defecto.",
+      "exe": ["%ProgramFiles(x86)%\\RASAero II\\RASAero II.exe", "%ProgramFiles%\\RASAero II\\RASAero II.exe"],
+      "uninstallName": "RASAero II" },
+    { "name": "OSCALC", "profiles": ["all", "vehicle"],
+      "portable": { "repoPath": "tools/OSCALC", "dest": "Tools\\OSCALC", "files": ["oscalc.exe", "oscalc_manual.pdf"] },
+      "shortcuts": [ { "name": "OSCALC", "file": "oscalc.exe" }, { "name": "OSCALC manual", "file": "oscalc_manual.pdf" } ] }
   ],
   "vscodeExtensions": [
     { "id": "stmicroelectronics.stm32-vscode-extension", "name": "STM32Cube for VS Code", "profiles": ["all", "avionics"] }

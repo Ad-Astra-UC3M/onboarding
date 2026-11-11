@@ -5,7 +5,7 @@ It is the single source of truth: if you are an AI assistant helping a team memb
 read this whole file before giving instructions, and follow it over generic Git advice.
 Keep it up to date whenever a workflow changes.
 
-Last reviewed: 2026-11-11 · Owner: Technical Direction
+Last reviewed: 2026-11-11 (branch naming updated) · Owner: Technical Direction
 
 ## 1. Organization
 
@@ -19,10 +19,10 @@ Last reviewed: 2026-11-11 · Owner: Technical Direction
 | Repository | Content | Visibility | `main` protected |
 |---|---|---|---|
 | `rocket-a4-hardware` | KiCad projects of the Rocket A4 boards | public | yes (1 approval) |
-| `rocket-a4-software` | Firmware and ground software of Rocket A4 | private | team rule only |
+| `rocket-a4-software` | Firmware and ground software of Rocket A4 | public | yes (1 approval) |
 | `model-satellite-hardware` | KiCad projects of the SiGMA boards | public | yes (1 approval) |
-| `model-satellite-software` | Firmware and ground software of SiGMA | private | team rule only |
-| `model-satellite-controls` | MATLAB/Simulink models of SiGMA (workflow still preliminary) | private | team rule only |
+| `model-satellite-software` | Firmware and ground software of SiGMA | public | yes (1 approval) |
+| `model-satellite-controls` | MATLAB/Simulink models of SiGMA (workflow still preliminary) | public | yes (1 approval) |
 | `onboarding` | Setup script, this file | public | no |
 
 Hardware and software repositories mirror each other: one folder per board.
@@ -70,11 +70,12 @@ Details and troubleshooting: `README.md` in this repository.
 The rules, in order of importance:
 
 1. **Nobody commits directly to `main`.** Every change reaches `main` through a pull request (PR)
-   approved by the Team Lead of that project. On the public hardware repositories GitHub enforces
-   this; on the private ones it is a team rule.
-2. **One branch per piece of work, normally one per week.** Use common sense: do not create a branch per
-   small change. Name it in lowercase with hyphens, starting with the member's name:
-   `jorge-power-stage`, `lucas-telemetry-parser`.
+   approved by the Team Lead of that project. GitHub enforces this with branch protection.
+2. **One branch per task, normally one per design week.** Use common sense: do not create a branch per
+   small change, but two different parts of the code means two branches.
+   Name: `<name>/d<week>` in lowercase, e.g. `lucas/d2` (design week 2). For something specific, or a second
+   branch the same week, add one or two words: `lucas/d2-test-benches`, `lucas/d2-power-stage`.
+   (Do not use `lucas/d2/test-benches`: Git cannot have `lucas/d2` and `lucas/d2/...` at the same time.)
 3. **Commit often and push the branch** to GitHub as a backup, even if the work is unfinished.
 4. **At the end of the week** (or when the piece of work is done), open a PR from the branch to `main`,
    with a short description of what changed and the Team Lead as reviewer.
@@ -86,11 +87,11 @@ Typical week in commands (SourceTree buttons do the same):
 ```bash
 git checkout main
 git pull                              # start from the latest main
-git checkout -b jorge-power-stage     # this week's branch
+git checkout -b lucas/d2-power-stage  # this week's branch
 # ... work ...
 git add <files>
 git commit -m "Add 3V3 regulator to power stage"
-git push -u origin jorge-power-stage  # first push; later just: git push
+git push -u origin lucas/d2-power-stage  # first push; later just: git push
 # end of week: open a PR on GitHub (Compare & pull request), reviewer = Team Lead
 ```
 
@@ -98,11 +99,11 @@ If `main` changed while working, bring it into the branch before opening the PR:
 
 ```bash
 git checkout main && git pull
-git checkout jorge-power-stage
+git checkout lucas/d2-power-stage
 git merge main                        # resolve conflicts if any, then commit and push
 ```
 
-Commit messages: present tense, capitalised, specific (`Add PID controller`, not `stuff`).
+Explain every commit. Messages: present tense, capitalised, specific (`Add PID controller`, not `stuff`).
 One commit = one logical change. Delete the branch after it is merged.
 
 Conflicts: the author of the branch resolves them (open the file, keep the right version, remove the

@@ -1,5 +1,7 @@
 # Ad Astra UC3M — Onboarding
 
+> **Cómo trabajamos (Git, ramas, PRs, CADLAB):** ver [`WORKFLOW.md`](WORKFLOW.md). Si usas una IA para que te ayude, pásale ese archivo.
+
 Setup automático para miembros del equipo (Windows 10/11). Instala las herramientas, conecta tu cuenta de GitHub y te deja todos los repositorios en `Escritorio\Ad Astra`.
 
 ## Cómo usarlo

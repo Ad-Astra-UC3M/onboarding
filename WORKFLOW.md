@@ -25,7 +25,7 @@ Last reviewed: 2026-11-11 (branch naming updated) · Owner: Technical Direction
 | `model-satellite-controls` | MATLAB/Simulink models of SiGMA (workflow still preliminary) | public | yes (1 approval) |
 | `onboarding` | Setup script, this file | public | no |
 
-Hardware and software repositories mirror each other: one folder per board.
+Hardware and software repositories mirror each other: one folder per section (flight computer, ground station).
 
 ```
 rocket-a4-hardware/              rocket-a4-software/
@@ -125,7 +125,7 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
 ## 6. Other tools (not in GitHub)
 
 - **Mechanical CAD:** Onshape, used like GitHub for CAD. Same weekly logic: each member works in their own
-  branch named `<name>-d<week>-<part number>-<Description>` (e.g. `jorge-d2-10101-ThicknessStudy`), saves
+  branch named `<name>-d<week>-<Description>` (e.g. `jorge-d2-BulkheadThickness`, `jorge-d2-RecoveryAssembly`), saves
   versions as save points with intuitive names (`Thickness30`, `Thickness15`) and a real description of what
   changed, and tells the Team Lead at the end of the week. Only the Team Lead merges into Main (weekly meeting
   or with the Vehicle Engineering lead's permission); Main then gets a version named after the week (`D2`).

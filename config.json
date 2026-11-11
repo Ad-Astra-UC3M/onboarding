@@ -8,7 +8,7 @@
     { "key": "all",      "label": "Todo (recomendado)" },
     { "key": "avionics", "label": "Avionics (hardware, software, controls)" },
     { "key": "vehicle",  "label": "Vehicle Engineering (estructuras, simulacion de vuelo, CFD/FEA)" },
-    { "key": "base",     "label": "Basico (Git, GitHub CLI, SourceTree, VS Code)", "hidden": true }
+    { "key": "base",     "label": "Basico (Git, GitHub CLI, SourceTree, VS Code, MATLAB)", "hidden": true }
   ],
   "projects": [
     { "key": "rocket",    "label": "Rocket A4",               "repoPrefix": "rocket-a4-" },
@@ -39,14 +39,14 @@
       "hint": "Desde STM32CubeIDE 2.0 no viene incluido. Inicia sesion (o crea cuenta) en ST, descarga 'STM32CubeMX-Win', descomprime el zip y ejecuta el instalador con las opciones por defecto.",
       "exe": ["%ProgramFiles%\\STMicroelectronics\\STM32Cube\\STM32CubeMX\\STM32CubeMX.exe", "%LOCALAPPDATA%\\Programs\\STM32CubeMX\\STM32CubeMX.exe"],
       "uninstallName": "STM32CubeMX" },
-    { "name": "MATLAB", "manual": true, "profiles": ["all", "avionics", "vehicle"],
+    { "name": "MATLAB", "manual": true, "profiles": ["all", "avionics", "vehicle", "base"],
       "url": "https://www.uc3m.es/sdic/software/matlab",
       "hint": "Entra en 'Portal MATLAB UC3M' con tu cuenta de la universidad, descarga MATLAB e incluye Simulink al instalar.",
       "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] },
     { "name": "OpenRocket", "profiles": ["all", "vehicle"],
       "download": { "githubRepo": "openrocket/openrocket", "assetPattern": "-installer-Windows-x86_64\\.exe$",
                     "url": "https://github.com/openrocket/openrocket/releases/download/release-24.12/OpenRocket-24.12-installer-Windows-x86_64.exe",
-                    "args": ["-q"], "elevate": true },
+                    "args": ["-q"], "elevate": true, "uninstallArgs": ["-q"] },
       "url": "https://openrocket.info/downloads.html",
       "hint": "Descarga el instalador de Windows de OpenRocket y ejecutalo con las opciones por defecto.",
       "exe": ["%ProgramFiles%\\OpenRocket\\OpenRocket.exe", "%LOCALAPPDATA%\\Programs\\OpenRocket\\OpenRocket.exe"],

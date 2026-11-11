@@ -58,10 +58,10 @@ no SSH keys), accepts the organization invitation, configures Git, clones every 
 
 | Profile | Tools |
 |---|---|
-| base (everyone) | Git, GitHub CLI, SourceTree, VS Code |
+| base (everyone) | Git, GitHub CLI, SourceTree, VS Code, MATLAB\* |
 | `all` | everything below |
-| `avionics` | base + KiCad, STM32CubeIDE\*, STM32CubeMX\*, STM32Cube extension for VS Code, MATLAB\* |
-| `vehicle` | base + OpenRocket, RASAero II, OSCALC, MATLAB\* |
+| `avionics` | base + KiCad, STM32CubeIDE\*, STM32CubeMX\*, STM32Cube extension for VS Code |
+| `vehicle` | base + OpenRocket, RASAero II, OSCALC |
 
 \* Manual install: the setup opens the download page (ST and UC3M accounts are needed) and checks the result.
 OpenRocket and RASAero II are downloaded from their official sites and installed silently (RASAero II also
@@ -70,7 +70,11 @@ the download in the browser instead and checks the result before creating the sh
 installed, only copied to `Apps\Tools\OSCALC`. If the setup fails, it leaves `Ayuda para la IA.txt` in the
 team folder: a ready-to-paste message for the member's AI assistant with links to the script and this file.
 
-Members of **Jet Engine** are not asked for a profile or an area: they get the base tools only.
+Members of **Jet Engine** are not asked for a profile or an area: they get the base tools only (Jet Engine has
+no repositories of its own yet). **Changing area:** run the setup again with the new profile. It offers to
+uninstall what it installed for the old profile (only what it installed itself, recorded in
+`%LOCALAPPDATA%\AdAstraSetup\installed.json`; never the base tools), removes those shortcuts from `Apps` and moves
+the repositories. STM32CubeIDE and STM32CubeMX are not removed automatically: the setup opens Windows' app list.
 Project and area decide which repository goes to `My Repositories` (`<project>-<area>`, e.g. Rocket A4 +
 Structures → `rocket-a4-simulation`); if that repository does not exist, everything goes to `Team Repositories`.
 

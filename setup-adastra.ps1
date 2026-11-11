@@ -51,6 +51,7 @@ $script:LogPath = $null
 $script:LoggedIn = $false
 $script:DeferredManual = @()
 $script:BlockingAntivirus = $null
+$script:InstalledRecord = $null
 $DefaultRawBase = 'https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/main'
 
 # ----------------------------------------------------------------------------
@@ -199,6 +200,42 @@ function Reset-AppCache {
     Update-SessionPath
 }
 
+function Get-StatePath {
+    return (Join-Path (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'AdAstraSetup') 'installed.json')
+}
+
+function Get-InstalledRecord {
+    # Names of the apps (and VS Code extension ids) this setup installed on this
+    # computer. Only these are ever uninstalled when the profile changes.
+    if ($null -ne $script:InstalledRecord) { return $script:InstalledRecord }
+    $script:InstalledRecord = @()
+    $path = Get-StatePath
+    if (Test-Path -LiteralPath $path) {
+        try { $script:InstalledRecord = @((Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json).installed | Where-Object { $_ }) } catch { }
+    }
+    return $script:InstalledRecord
+}
+
+function Save-InstalledRecord([string[]]$Names) {
+    $script:InstalledRecord = @($Names | Where-Object { $_ } | Select-Object -Unique)
+    if ($DryRun) { return }
+    $path = Get-StatePath
+    try {
+        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force -ErrorAction Stop)
+        $json = ConvertTo-Json -InputObject @{ installed = @($script:InstalledRecord) }
+        [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
+function Add-InstalledRecord([string]$Name) {
+    $current = @(Get-InstalledRecord)
+    if ($current -notcontains $Name) { Save-InstalledRecord (@($current) + $Name) }
+}
+
+function Remove-InstalledRecord([string]$Name) {
+    Save-InstalledRecord @(@(Get-InstalledRecord) | Where-Object { $_ -ne $Name })
+}
+
 function Test-NetFx3 {
     # .NET Framework 3.5 (needed by RASAero II); not enabled by default on Windows 10/11.
     $key = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction SilentlyContinue
@@ -338,6 +375,10 @@ function Install-Apps($Config, $Member, [string]$Root) {
     Write-Info "Perfil '$profileKey': $($names -join ', ')"
     if ($SkipInstall) { Write-Info "Saltado (-SkipInstall)."; Add-Result 'Apps' 'Saltado' '-SkipInstall'; return }
 
+    # Changed profile (e.g. avionics -> vehicle)? Offer to remove what this
+    # setup installed for the old one.
+    Remove-OldApps $Config $Member $Root
+
     $apps = @($selected | Where-Object { $_.wingetId })
     $failed = @()
     foreach ($app in $apps) {
@@ -351,6 +392,7 @@ function Install-Apps($Config, $Member, [string]$Root) {
         Update-SessionPath
         if ($code -eq 0 -or (Test-AppInstalled $app)) {
             Write-Ok "$($app.name) instalado"
+            Add-InstalledRecord $app.name
         } else {
             Write-Err "No se pudo instalar $($app.name) (código $code)."
             $failed += $app.name
@@ -535,6 +577,7 @@ function Install-DownloadedApp($Config, $App) {
     for ($i = 0; $succeeded -and $i -lt 12 -and -not (Test-AppInstalled $App); $i++) { Start-Sleep -Seconds 5; Reset-AppCache }
     if (Test-AppInstalled $App) {
         Write-Ok "$($App.name) instalado"
+        Add-InstalledRecord $App.name
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
         return $true
     }
@@ -584,6 +627,7 @@ function Install-PortableApps($Config, $Member, [string]$Root) {
         Start-Sleep -Seconds 2
         if (Test-PortableApp $app $Root) {
             Write-Ok "$($app.name) copiado en Apps\$($app.portable.dest)"
+            Add-InstalledRecord $app.name
         } else {
             Write-Warn "$($app.name) no ha quedado copiado (puede que tu antivirus lo haya bloqueado): lo descargas tú en el último paso."
             $script:DeferredManual += $app
@@ -626,12 +670,122 @@ function Install-CodeExtensions($Config, $Member) {
         & $code --install-extension $ext.id 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "Extensión $($ext.name) instalada"
+            Add-InstalledRecord $ext.id
         } else {
             Write-Err "No se pudo instalar la extensión $($ext.name) (código $LASTEXITCODE)."
             $failedNames += $ext.name
         }
     }
     return $failedNames
+}
+
+function Split-CommandLine([string]$CommandLine) {
+    # "C:\x\uninstall.exe" /S  ->  exe + arguments (quoted or not).
+    $line = $CommandLine.Trim()
+    if ($line.StartsWith('"')) {
+        $end = $line.IndexOf('"', 1)
+        if ($end -gt 0) { return @($line.Substring(1, $end - 1), $line.Substring($end + 1).Trim()) }
+    }
+    $index = $line.ToLower().IndexOf('.exe')
+    if ($index -gt 0) { return @($line.Substring(0, $index + 4), $line.Substring($index + 4).Trim()) }
+    return @($line, '')
+}
+
+function Uninstall-SetupApp($Config, $App, [string]$Root) {
+    # Removes one app installed by this setup. Returns $true when it is gone.
+    if ($App.portable) {
+        $dest = Join-Path (Join-Path $Root 'Apps') $App.portable.dest
+        Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($entry in @($App.shortcuts)) { Remove-Item -LiteralPath (Join-Path (Join-Path $Root 'Apps') "$($entry.name).lnk") -Force -ErrorAction SilentlyContinue }
+        return -not (Test-Path -LiteralPath $dest)
+    }
+    if (-not (Test-AppInstalled $App)) { return $true }
+    try {
+        if ($App.wingetId) {
+            & winget uninstall --id $App.wingetId -e --source winget --silent --accept-source-agreements | Out-Host
+        } else {
+            $entry = Find-UninstallEntry $App
+            if (-not $entry) { return $false }
+            $exe = $null; $arguments = ''
+            if ($entry.QuietUninstallString) {
+                $parts = Split-CommandLine "$($entry.QuietUninstallString)"; $exe = $parts[0]; $arguments = $parts[1]
+            } elseif ("$($entry.UninstallString)" -match '(?i)msiexec' -and "$($entry.UninstallString)" -match '(\{[0-9A-Fa-f-]{36}\})') {
+                $exe = 'msiexec.exe'; $arguments = "/x $($Matches[1]) /qn /norestart"
+            } else {
+                $parts = Split-CommandLine "$($entry.UninstallString)"; $exe = $parts[0]
+                $arguments = (@($parts[1]) + @($App.download.uninstallArgs) | Where-Object { $_ }) -join ' '
+            }
+            $params = @{ FilePath = $exe; Wait = $true; PassThru = $true; ErrorAction = 'Stop' }
+            if ($arguments) { $params['ArgumentList'] = $arguments }
+            # Programs installed for all users need administrator rights (one UAC prompt).
+            if ("$($entry.PSPath)" -notmatch 'HKEY_CURRENT_USER') { $params['Verb'] = 'RunAs' }
+            [void](Start-Process @params)
+        }
+    } catch {
+        return $false
+    }
+    # Some uninstallers finish in the background: wait up to a minute.
+    for ($i = 0; $i -lt 12; $i++) {
+        Reset-AppCache
+        if (-not (Test-AppInstalled $App)) { return $true }
+        Start-Sleep -Seconds 5
+    }
+    return $false
+}
+
+function Remove-OldApps($Config, $Member, [string]$Root) {
+    # When the member changes profile, removes what this setup installed for
+    # the old one. Never touches the base tools (Git, GitHub CLI, SourceTree,
+    # VS Code, MATLAB), nor anything that was already on the computer. Apps the
+    # member installed by hand (STM32CubeIDE, STM32CubeMX) are not removed
+    # automatically: the setup opens Windows' app list instead.
+    $profileKey = $Member.Profile.key
+    $automatic = @(); $byHand = @(); $extensions = @()
+    foreach ($name in @(Get-InstalledRecord)) {
+        $app = @($Config.apps | Where-Object { $_.name -eq $name })[0]
+        if ($app) {
+            if (($app.profiles -contains $profileKey) -or ($app.profiles -contains 'base')) { continue }
+            if ($app.manual) { $byHand += $app } else { $automatic += $app }
+            continue
+        }
+        $ext = @($Config.vscodeExtensions | Where-Object { $_.id -eq $name })[0]
+        if ($ext -and -not ($ext.profiles -contains $profileKey)) { $extensions += $ext }
+    }
+    $all = @($automatic | ForEach-Object { $_.name }) + @($byHand | ForEach-Object { $_.name }) + @($extensions | ForEach-Object { "$($_.name) (VS Code)" })
+    if ($all.Count -eq 0) { return }
+
+    Write-Warn "Tu perfil ahora es '$profileKey'. Estas herramientas las instaló el setup para tu perfil anterior y ya no las necesitas:"
+    Write-Info "  $($all -join ', ')"
+    if ($DryRun) { Write-Info "(dry-run) preguntaría si desinstalarlas"; return }
+    if (-not (Read-YesNo '¿Las desinstalo? (s = sí; Enter o n = no, las dejo)' $false)) {
+        Write-Info "Las dejo instaladas. Si cambias de idea, vuelve a ejecutar el setup."
+        return
+    }
+    $openSettings = $false
+    foreach ($app in $automatic) {
+        Write-Info "Desinstalando $($app.name)... (acepta el aviso de Windows si aparece)"
+        if (Uninstall-SetupApp $Config $app $Root) {
+            Write-Ok "$($app.name) desinstalado"
+            Remove-InstalledRecord $app.name
+        } else {
+            Write-Warn "No pude desinstalar $($app.name): quítalo tú desde Configuración > Aplicaciones (te la abro)."
+            $openSettings = $true
+        }
+    }
+    if ($extensions.Count -gt 0) {
+        $code = Get-CodeCli $Config
+        foreach ($ext in $extensions) {
+            if ($code) { & $code --uninstall-extension $ext.id 2>$null | Out-Null }
+            if ($code -and $LASTEXITCODE -eq 0) { Write-Ok "Extensión $($ext.name) desinstalada"; Remove-InstalledRecord $ext.id }
+            else { Write-Warn "No pude desinstalar la extensión $($ext.name): quítala desde VS Code (Extensiones)." }
+        }
+    }
+    foreach ($app in $byHand) {
+        Write-Info "$($app.name) lo instalaste tú: desinstálalo desde Configuración > Aplicaciones (te la abro). Yo quito su acceso directo."
+        Remove-InstalledRecord $app.name
+        $openSettings = $true
+    }
+    if ($openSettings) { Open-Url 'ms-settings:appsfeatures' }
 }
 
 # ----------------------------------------------------------------------------
@@ -992,7 +1146,14 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
     if ($script:OnWindows) {
         try {
             $shell = New-Object -ComObject WScript.Shell
-            foreach ($app in @($Config.apps)) {
+            # The Apps folder only shows the tools of the member's profile: the
+            # shortcuts of other profiles' apps are removed (the apps are not).
+            $profileKey = $Member.Profile.key
+            foreach ($app in @($Config.apps | Where-Object { -not ($_.profiles -contains $profileKey) })) {
+                $names = @("$($app.name)") + @($app.shortcuts | ForEach-Object { $_.name })
+                foreach ($name in $names) { Remove-Item -LiteralPath (Join-Path $appsDir "$name.lnk") -Force -ErrorAction SilentlyContinue }
+            }
+            foreach ($app in @($Config.apps | Where-Object { $_.profiles -contains $profileKey })) {
                 $exe = Find-Exe $app
                 if (-not $exe) { continue }
                 $shortcut = $shell.CreateShortcut((Join-Path $appsDir "$($app.name).lnk"))
@@ -1003,7 +1164,7 @@ function New-Shortcuts($Config, $Member, [string]$Root) {
             }
             # Copied programs (OSCALC): one shortcut per listed file. Existing
             # shortcuts are left as they are.
-            foreach ($app in @($Config.apps | Where-Object { $_.portable })) {
+            foreach ($app in @($Config.apps | Where-Object { $_.portable -and ($_.profiles -contains $profileKey) })) {
                 $dir = Join-Path $appsDir $app.portable.dest
                 foreach ($entry in @($app.shortcuts)) {
                     $target = Join-Path $dir $entry.file
@@ -1093,7 +1254,7 @@ function Invoke-ManualApps($Config, $Member, [string]$Root) {
             } else { $done = Test-AppInstalled $app }
             if (-not $done) { Write-Warn "No lo encuentro todavía. Termina y pulsa Enter." }
         }
-        if ($done) { Write-Ok "$($app.name) instalado" } else { $pending += $app.name }
+        if ($done) { Write-Ok "$($app.name) instalado"; Add-InstalledRecord $app.name } else { $pending += $app.name }
     }
     if ($pending.Count -gt 0) { Add-Result 'Apps manuales' 'Pendiente' ($pending -join ', ') }
     elseif (-not $DryRun) { Add-Result 'Apps manuales' 'OK' '' }

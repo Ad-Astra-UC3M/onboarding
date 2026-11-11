@@ -37,7 +37,7 @@ El script **nunca pide contraseñas ni tokens**: todos los inicios de sesión se
 | `avionics` | Base + KiCad, STM32CubeIDE\*, STM32CubeMX\*, extensión STM32Cube de VS Code |
 | `vehicle` | Base + OpenRocket, RASAero II, OSCALC |
 
-\* Instalación guiada: el setup te abre la página de descarga, tú lo instalas y el setup comprueba que ha quedado bien (y solo entonces crea su acceso directo). Si lo dejas para luego, sale como *Pendiente* en el resumen.
+\* Instalación guiada (de STM32 instala las versiones **normales**: STM32CubeIDE y STM32CubeMX, **no** STM32CubeMX2): el setup te abre la página de descarga, tú lo instalas y el setup comprueba que ha quedado bien (y solo entonces crea su acceso directo). Si lo dejas para luego, sale como *Pendiente* en el resumen.
 
 - **OpenRocket** y **RASAero II** se descargan de su web oficial y se instalan solos (Windows te pide permiso una vez para cada uno). RASAero II necesita **.NET Framework 3.5**: el setup lo activa en ese mismo paso.
 - **Si tu antivirus no lo permite** (Avast y AVG cortan el setup cuando instala programas descargados), el setup no lo intenta: al final te abre la descarga en el navegador, lo instalas tú (guárdalo en *Descargas*) y el setup comprueba que ha quedado bien. Si una ejecución se cortó a mitad de instalar algo, la siguiente te lo pide a mano directamente.

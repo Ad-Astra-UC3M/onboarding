@@ -5,12 +5,13 @@ It is the single source of truth: if you are an AI assistant helping a team memb
 read this whole file before giving instructions, and follow it over generic Git advice.
 Keep it up to date whenever a workflow changes.
 
-Last reviewed: 2026-11-11 (branch naming updated) · Owner: Technical Direction
+Last reviewed: 2026-11-11 (setup profiles, Jet Engine, rocket-a4-simulation) · Owner: Technical Direction
 
 ## 1. Organization
 
 - GitHub organization: `Ad-Astra-UC3M` (https://github.com/Ad-Astra-UC3M)
-- Projects: **Rocket A4** and **Model Satellite (SiGMA)** for TEKNOFEST 2027. Jet Engine does not use GitHub yet.
+- Projects: **Rocket A4** and **Model Satellite (SiGMA)** for TEKNOFEST 2027, and **Jet Engine**, which has no
+  repositories of its own yet (its members get the base tools and every repository in `Team Repositories`).
 - Members are UC3M students. Their GitHub account must use their UC3M email (`NIA@alumnos.uc3m.es`),
   because organization invitations are sent to that address.
 
@@ -20,6 +21,7 @@ Last reviewed: 2026-11-11 (branch naming updated) · Owner: Technical Direction
 |---|---|---|---|
 | `rocket-a4-hardware` | KiCad projects of the Rocket A4 boards | public | yes (1 approval) |
 | `rocket-a4-software` | Firmware and ground software of Rocket A4 | public | yes (1 approval) |
+| `rocket-a4-simulation` | OpenRocket model of Rocket A4 and preliminary design spreadsheet | public | yes (1 approval) |
 | `model-satellite-hardware` | KiCad projects of the SiGMA boards | public | yes (1 approval) |
 | `model-satellite-software` | Firmware and ground software of SiGMA | public | yes (1 approval) |
 | `model-satellite-controls` | MATLAB/Simulink models of SiGMA (workflow still preliminary) | public | yes (1 approval) |
@@ -49,10 +51,25 @@ Windows 10/11, one command in PowerShell:
 irm https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/main/setup-adastra.ps1 | iex
 ```
 
-It installs Git, GitHub CLI, SourceTree, VS Code (with the STM32Cube extension) and KiCad; guides the
-manual install of STM32CubeIDE and MATLAB; signs in to GitHub in the browser (no passwords, no SSH keys);
-accepts the organization invitation; configures Git; clones every repository into `Desktop\Ad Astra`;
-and loads them into SourceTree. It is safe to run again.
+It installs the tools of the member's profile (table below), signs in to GitHub in the browser (no passwords,
+no SSH keys), accepts the organization invitation, configures Git, clones every repository into
+`Desktop\Ad Astra` and loads them into SourceTree. It is safe to run again.
+
+| Profile | Tools |
+|---|---|
+| base (everyone) | Git, GitHub CLI, SourceTree, VS Code |
+| `all` | everything below |
+| `avionics` | base + KiCad, STM32CubeIDE\*, STM32CubeMX\*, STM32Cube extension for VS Code, MATLAB\* |
+| `vehicle` | base + OpenRocket, RASAero II, OSCALC, MATLAB\* |
+
+\* Manual install: the setup opens the download page (ST and UC3M accounts are needed) and checks the result.
+OpenRocket and RASAero II are also installed by the member: the setup opens the official download in the
+browser (antivirus programs such as Avast kill scripts that run installers) and checks the result before
+creating the shortcut. OSCALC is not installed, only copied to `Apps\Tools\OSCALC`.
+
+Members of **Jet Engine** are not asked for a profile or an area: they get the base tools only.
+Project and area decide which repository goes to `My Repositories` (`<project>-<area>`, e.g. Rocket A4 +
+Structures → `rocket-a4-simulation`); if that repository does not exist, everything goes to `Team Repositories`.
 
 ```
 Desktop\Ad Astra\
@@ -116,13 +133,33 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
 - **Software:** VS Code with the STM32Cube extension (installed by the setup); STM32CubeIDE as an optional
   manual install. MCU family: STM32 (Black Pill on the flight computer). Same Git workflow as above.
   Commit the `.ioc`, `.project` and `.cproject` files; never commit build outputs.
+- **STM32CubeMX** (manual install; not bundled with STM32CubeIDE since version 2.0): configures the MCU's
+  pins, clocks and peripherals in the `.ioc` file and generates the project, which is then opened in VS Code
+  or STM32CubeIDE. Regenerate the code from the `.ioc` instead of editing the generated setup by hand, and
+  keep your own code inside the `USER CODE BEGIN` / `USER CODE END` blocks so regeneration preserves it.
 - **Hardware:** KiCad. Review schematic and PCB changes visually on **CADLAB** (https://cadlab.io), which
   is connected to the hardware repositories. Access: sign in to CADLAB with the GitHub account, then send
   the GitHub username to Jorge (Technical Director), who adds the member to the Ad Astra organization in
   CADLAB. There is no email invitation. In a PR on a hardware repository, the reviewer compares commits in
   CADLAB instead of reading the text diff of `.kicad_*` files.
 
-## 6. Other tools (not in GitHub)
+## 6. Flight simulation (OpenRocket)
+
+Repository `rocket-a4-simulation`: `openrocket/` holds the rocket's `.ork` file (the baseline; an `.ork` stores
+the rocket and its simulations, so there is no results folder), `motors/` holds thrust curves (`.eng`, `.rse`)
+for motors that do not ship with OpenRocket, and `model/` holds the preliminary design spreadsheet (Excel).
+RASAero II and OSCALC are installed alongside OpenRocket by the `vehicle` profile.
+
+- **One person at a time edits the baseline.** `.ork` and `.xlsx` files are compressed, so Git cannot merge
+  them. Nacho, Team Lead of Flight Simulation, owns the baseline in `main`.
+- **Studies go in branches** (`nacho-d3-FinSize`). Every iteration is a commit + push with the configuration in
+  the message; `.ork` and `.xlsx` changes of the same iteration go in the same commit. A new study branches from
+  the commit of a good iteration.
+- **End of the week:** members tell Nacho which commit is their result; Nacho integrates it by hand into the
+  baseline and brings it to `main` through a PR, then tags `main` with the week (`d3`).
+- **Milestones are tags** on `main`: `baseline-pdr`, `baseline-cdr`.
+
+## 7. Other tools (not in GitHub)
 
 - **Mechanical CAD:** Onshape, used like GitHub for CAD. Same weekly logic: each member works in their own
   branch named `<name>-d<week>-<Description>` (e.g. `jorge-d2-BulkheadThickness`, `jorge-d2-RecoveryAssembly`), saves
@@ -132,13 +169,6 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
   Nobody works directly on Main. A second study branches from the best version of the first.
   Part numbering: `1-Structures` (system), `101-MainFrame` (subassembly), `10101-MainPlate` (part).
   Geometry for CFD/FEA is exported (usually STEP) from the right version into the project's Teams folder.
-- **Flight simulation (OpenRocket):** repository `rocket-a4-simulation` (`openrocket/` .ork with the rocket and
-  its simulations, `model/` preliminary Excel, `motors/` custom thrust curves). Nacho, Team Lead of Flight
-  Simulation, owns the baseline in `main`. Members work in their branch (`nacho-d3-FinSize`); every iteration
-  is a commit + push with the configuration in the message, and `.ork` + `.xlsx` changes of the same iteration
-  go in the same commit. A new study branches from the commit of a good iteration. `.ork` and `.xlsx` are
-  compressed, so Git cannot merge them: at the end of the week members tell Nacho which commit is their result,
-  and Nacho integrates by hand into the baseline, updates `main` and tags it with the week (`d3`).
 - **CFD and FEA:** run in SimScale, never stored in GitHub. SimScale project named like the Onshape branch
   (`jorge-d2-BulkheadThickness`); each simulation named after the Onshape version it uses (`Thickness30`).
   Every simulation gets one row in the "Simulations" Excel in Teams (name, author, design week, what it
@@ -147,7 +177,7 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
   `.mat` files; the setup configures MATLAB's merge tool if MATLAB is installed.
 - **Communication:** WhatsApp for logistics, Microsoft Teams for technical discussion and Planner for tasks.
 
-## 7. Notes for AI assistants
+## 8. Notes for AI assistants
 
 - Prefer the setup script over manual installation steps. Do not suggest SSH keys or personal access tokens:
   authentication is done with GitHub CLI (`gh auth login --web`).

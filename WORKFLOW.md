@@ -5,7 +5,8 @@ It is the single source of truth: if you are an AI assistant helping a team memb
 read this whole file before giving instructions, and follow it over generic Git advice.
 Keep it up to date whenever a workflow changes.
 
-Last reviewed: 2026-11-11 (setup profiles, Jet Engine, rocket-a4-simulation) · Owner: Technical Direction
+Last reviewed: 2026-11-11 (synced with the "Version Control Workflow" document) · Human-friendly version:
+the "Version Control Workflow" PDF, which follows this file. · Owner: Technical Direction
 
 ## 1. Organization
 
@@ -89,7 +90,8 @@ Details and troubleshooting: `README.md` in this repository.
 The rules, in order of importance:
 
 1. **Nobody commits directly to `main`.** Every change reaches `main` through a pull request (PR)
-   approved by the Team Lead of that project. GitHub enforces this with branch protection.
+   approved by the Team Lead of that project. A Team Lead's own PRs are approved by another Team Lead
+   (every Team Lead is a reviewer on GitHub). GitHub enforces this with branch protection (1 approval).
 2. **One branch per task, normally one per design week.** Use common sense: do not create a branch per
    small change, but two different parts of the code means two branches.
    Name: `<name>-d<week>`, e.g. `lucas-d2` (design week 2). For something specific, or a second branch the
@@ -124,11 +126,12 @@ git merge main                        # resolve conflicts if any, then commit an
 ```
 
 Explain every commit. Messages: present tense, capitalised, specific (`Add PID controller`, not `stuff`).
-One commit = one logical change. Delete the branch after it is merged.
+One commit = one logical change. After the merge, delete the branch on GitHub (*Delete branch* button in
+the PR) and locally (`git branch -d <branch>`).
 
 Conflicts: the author of the branch resolves them (open the file, keep the right version, remove the
-`<<<<<<<`, `=======`, `>>>>>>>` markers, then commit). Binary files (KiCad PCBs are text, but Simulink
-`.slx` and images are binary) cannot be merged line by line: agree with the other person which version wins.
+`<<<<<<<`, `=======`, `>>>>>>>` markers, then commit). Binary files (images, PDFs, `.slx`, `.ork`, `.xlsx`;
+KiCad files are text) cannot be merged: agree beforehand who edits them.
 
 ## 5. Avionics
 
@@ -158,8 +161,8 @@ RASAero II and OSCALC are installed alongside OpenRocket by the `vehicle` profil
   the message; `.ork` and `.xlsx` changes of the same iteration go in the same commit. A new study branches from
   the commit of a good iteration.
 - **End of the week:** members tell Nacho which commit is their result; Nacho integrates it by hand into the
-  baseline and brings it to `main` through a PR, then tags `main` with the week (`d3`).
-- **Milestones are tags** on `main`: `baseline-pdr`, `baseline-cdr`.
+  baseline, checks that the simulation still works, brings it to `main` through a PR approved by another
+  Team Lead, and tags `main` with the week (`d3`). Any past week can be opened on GitHub from its tag.
 
 ## 7. Other tools (not in GitHub)
 
@@ -167,14 +170,25 @@ RASAero II and OSCALC are installed alongside OpenRocket by the `vehicle` profil
   branch named `<name>-d<week>-<Description>` (e.g. `jorge-d2-BulkheadThickness`, `jorge-d2-RecoveryAssembly`), saves
   versions as save points with intuitive names (`Thickness30`, `Thickness15`) and a real description of what
   changed, and tells the Team Lead at the end of the week. Only the Team Lead merges into Main (weekly meeting
-  or with the Vehicle Engineering lead's permission); Main then gets a version named after the week (`D2`).
+  or with the Vehicle Engineering lead's permission); Main then gets a version named after the week (`d2`).
   Nobody works directly on Main. A second study branches from the best version of the first.
   Part numbering: `1-Structures` (system), `101-MainFrame` (subassembly), `10101-MainPlate` (part).
-  Geometry for CFD/FEA is exported (usually STEP) from the right version into the project's Teams folder.
-- **CFD and FEA:** run in SimScale, never stored in GitHub. SimScale project named like the Onshape branch
-  (`jorge-d2-BulkheadThickness`); each simulation named after the Onshape version it uses (`Thickness30`).
-  Every simulation gets one row in the "Simulations" Excel in Teams (name, author, design week, what it
-  simulates, SimScale link, main result).
+  Default units (millimetres, degrees). Every version needs a description of what changed and why: it is
+  the CAD change log.
+- **Geometry for simulations:** CFD uses a permanent Onshape branch called `CFD`, created from a version of
+  Main, with the geometry cleaned once (outer shape only: no internal parts, bolts or holes). Each CFD study is
+  a branch of `CFD` (`jorge-d4-NoseConeShape`) and each iteration a version (`VonKarman`, `Ogive`). `CFD` is
+  never merged into Main: the designer applies the winning shape by hand in their own design branch. FEA has
+  no special branch: simulate the version of your design branch directly, suppressing small features (a
+  fillet, a logo) only for the simulation. SimScale imports the geometry from that exact version (usually STEP).
+- **CFD and FEA:** run in SimScale, never stored in GitHub. The club account is reserved for demanding
+  simulations, with Jorge's (Technical Director) permission; everyday simulations use free regular accounts
+  (username: own name followed by a number, e.g. `jorgesanz3`). SimScale project named like the Onshape
+  branch (`jorge-d4-NoseConeShape`, `jorge-d3-BracketThickness`); each simulation named after the Onshape
+  version it uses (`VonKarman`, `Thickness15`). Every simulation gets one row in its project's "Simulations"
+  Excel, created by the Team Lead from the team template and pinned as a tab in the project's Teams channel
+  (one sheet per study if needed): name, author, account used, design week, what it simulates, SimScale
+  link, main result.
 - **Controls (MATLAB/Simulink):** workflow still to be defined. Normal Git works for `.m`, `.slx` and
   `.mat` files; the setup configures MATLAB's merge tool if MATLAB is installed.
 - **Communication:** WhatsApp for logistics, Microsoft Teams for technical discussion and Planner for tasks.

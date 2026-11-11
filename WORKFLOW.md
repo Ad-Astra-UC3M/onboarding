@@ -132,8 +132,17 @@ Conflicts: the author of the branch resolves them (open the file, keep the right
   Nobody works directly on Main. A second study branches from the best version of the first.
   Part numbering: `1-Structures` (system), `101-MainFrame` (subassembly), `10101-MainPlate` (part).
   Geometry for CFD/FEA is exported (usually STEP) from the right version into the project's Teams folder.
-- **CFD and FEA:** simulation files are large and binary, so they live in the team's Microsoft Teams /
-  OneDrive folder, never in GitHub.
+- **Flight simulation (OpenRocket):** repository `rocket-a4-simulation` (`openrocket/` .ork with the rocket and
+  its simulations, `model/` preliminary Excel, `motors/` custom thrust curves). Nacho, Team Lead of Flight
+  Simulation, owns the baseline in `main`. Members work in their branch (`nacho-d3-FinSize`); every iteration
+  is a commit + push with the configuration in the message, and `.ork` + `.xlsx` changes of the same iteration
+  go in the same commit. A new study branches from the commit of a good iteration. `.ork` and `.xlsx` are
+  compressed, so Git cannot merge them: at the end of the week members tell Nacho which commit is their result,
+  and Nacho integrates by hand into the baseline, updates `main` and tags it with the week (`d3`).
+- **CFD and FEA:** run in SimScale, never stored in GitHub. SimScale project named like the Onshape branch
+  (`jorge-d2-BulkheadThickness`); each simulation named after the Onshape version it uses (`Thickness30`).
+  Every simulation gets one row in the "Simulations" Excel in Teams (name, author, design week, what it
+  simulates, SimScale link, main result).
 - **Controls (MATLAB/Simulink):** workflow still to be defined. Normal Git works for `.m`, `.slx` and
   `.mat` files; the setup configures MATLAB's merge tool if MATLAB is installed.
 - **Communication:** WhatsApp for logistics, Microsoft Teams for technical discussion and Planner for tasks.

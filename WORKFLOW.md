@@ -63,9 +63,11 @@ no SSH keys), accepts the organization invitation, configures Git, clones every 
 | `vehicle` | base + OpenRocket, RASAero II, OSCALC, MATLAB\* |
 
 \* Manual install: the setup opens the download page (ST and UC3M accounts are needed) and checks the result.
-OpenRocket and RASAero II are also installed by the member: the setup opens the official download in the
-browser (antivirus programs such as Avast kill scripts that run installers) and checks the result before
-creating the shortcut. OSCALC is not installed, only copied to `Apps\Tools\OSCALC`.
+OpenRocket and RASAero II are downloaded from their official sites and installed silently (RASAero II also
+enables .NET Framework 3.5). With Avast/AVG active, or after a run that was cut off mid-install, the setup opens
+the download in the browser instead and checks the result before creating the shortcut. OSCALC is not
+installed, only copied to `Apps\Tools\OSCALC`. If the setup fails, it leaves `Ayuda para la IA.txt` in the
+team folder: a ready-to-paste message for the member's AI assistant with links to the script and this file.
 
 Members of **Jet Engine** are not asked for a profile or an area: they get the base tools only.
 Project and area decide which repository goes to `My Repositories` (`<project>-<area>`, e.g. Rocket A4 +

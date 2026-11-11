@@ -50,6 +50,7 @@ $script:Results = New-Object System.Collections.ArrayList
 $script:LogPath = $null
 $script:LoggedIn = $false
 $script:DeferredManual = @()
+$script:BlockingAntivirus = $null
 $DefaultRawBase = 'https://raw.githubusercontent.com/Ad-Astra-UC3M/onboarding/main'
 
 # ----------------------------------------------------------------------------
@@ -356,15 +357,11 @@ function Install-Apps($Config, $Member, [string]$Root) {
         }
     }
     # Apps with an official installer that is not in winget (OpenRocket,
-    # RASAero II). Antivirus programs (Avast, AVG...) stop PowerShell when it
-    # downloads and runs an installer, and kill the whole setup. So the setup
-    # never runs them: step 8 opens the download in the browser, the member
-    # installs it and the setup checks the result.
+    # RASAero II): downloaded and installed silently. If that is not possible
+    # (antivirus, no internet, UAC refused...), step 8 opens the download in
+    # the browser, the member installs it and the setup checks the result.
     foreach ($app in @($selected | Where-Object { $_.download })) {
-        if (Test-AppInstalled $app) { Write-Ok "$($app.name) ya está instalado"; continue }
-        if ($DryRun) { Write-Info "(dry-run) pediría instalar $($app.name) a mano: abriría $(Get-DownloadUrl $app.download)"; continue }
-        Write-Info "$($app.name): lo instalas tú en el último paso (te abro la descarga en el navegador)."
-        $script:DeferredManual += $app
+        if (-not (Install-DownloadedApp $Config $app)) { $script:DeferredManual += $app }
     }
     $failed += @(Install-PortableApps $Config $Member $Root)
     $failed += @(Install-CodeExtensions $Config $Member)
@@ -417,6 +414,133 @@ function Get-BrowserDownloadUrl($Config, $Download) {
         if ($response.StatusCode -lt 400) { return $url }
     } catch { }
     return "$(Get-RawBase $Config)/$($Download.mirror)"
+}
+
+function Get-BlockingAntivirus($Config) {
+    # Antivirus programs known to kill this setup when it runs a downloaded
+    # installer (Avast/AVG: detection IDP.HELU.PSD11). Returns the name of the
+    # first one that is active, or ''. Read once per run.
+    if ($null -ne $script:BlockingAntivirus) { return $script:BlockingAntivirus }
+    $script:BlockingAntivirus = ''
+    $names = @($Config.antivirusNoDirectInstall | Where-Object { $_ })
+    if (-not $script:OnWindows -or $names.Count -eq 0) { return $script:BlockingAntivirus }
+    try {
+        foreach ($product in @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntivirusProduct' -ErrorAction Stop)) {
+            # productState: bits 12-15 = 1 when real-time protection is on.
+            $enabled = ((([int]$product.productState) -shr 12) -band 0xF) -eq 1
+            foreach ($name in $names) {
+                if ($enabled -and "$($product.displayName)" -like "*$name*") { $script:BlockingAntivirus = "$($product.displayName)"; return $script:BlockingAntivirus }
+            }
+        }
+    } catch { }
+    return $script:BlockingAntivirus
+}
+
+function Get-AttemptMarker($App) {
+    # Written just before running an installer and removed when it returns. If
+    # it is still there on the next run, the previous run was cut off in the
+    # middle of the install (usually by an antivirus): do not try again.
+    $dir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'AdAstraSetup'
+    return (Join-Path $dir ('install-' + ($App.name -replace '[^A-Za-z0-9]', '') + '.txt'))
+}
+
+function Install-DownloadedApp($Config, $App) {
+    # Downloads the official installer (optionally inside a .zip; "mirror" is a
+    # copy in this repository) and runs it silently. Only the installer itself
+    # is elevated (one UAC prompt). Returns $true when the app is installed.
+    $marker = Get-AttemptMarker $App
+    if (Test-AppInstalled $App) {
+        Write-Ok "$($App.name) ya está instalado"
+        Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    $url = Get-DownloadUrl $App.download
+    $antivirus = Get-BlockingAntivirus $Config
+    $interrupted = Test-Path -LiteralPath $marker
+    if ($DryRun) {
+        if ($antivirus) { Write-Info "(dry-run) $antivirus está activo: pediría instalar $($App.name) a mano desde $url" }
+        elseif ($interrupted) { Write-Info "(dry-run) la última instalación de $($App.name) se cortó: pediría instalarlo a mano" }
+        else { Write-Info "(dry-run) descargaría e instalaría $($App.name) desde $url" }
+        return $true
+    }
+    if ($antivirus -or $interrupted) {
+        if ($antivirus) { Write-Warn "Tu antivirus ($antivirus) suele cortar este setup cuando instala programas descargados." }
+        else { Write-Warn "La última vez que intenté instalar $($App.name) el setup se cortó (casi siempre es el antivirus)." }
+        Write-Info "$($App.name): lo instalas tú en el último paso; te abro la descarga en el navegador."
+        return $false
+    }
+    if (-not $url) { return $false }
+
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('AdAstraSetup-' + ($App.name -replace '[^A-Za-z0-9]', ''))
+    $code = $null
+    $log = $null
+    try {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        [void](New-Item -ItemType Directory -Path $work -Force -ErrorAction Stop)
+        $file = Join-Path $work ([Uri]::UnescapeDataString((Split-Path -Leaf ([Uri]$url).AbsolutePath)))
+        Write-Info "Descargando $($App.name)..."
+        try { Save-Url $url $file }
+        catch {
+            if (-not $App.download.mirror) { throw }
+            Write-Info "La web oficial no responde; uso la copia del repositorio onboarding."
+            $file = Join-Path $work (Split-Path -Leaf $App.download.mirror)
+            Save-Url "$(Get-RawBase $Config)/$($App.download.mirror)" $file
+        }
+        $installer = Get-Item -LiteralPath $file
+        if ($installer.Extension -eq '.zip') {
+            $unzipped = Join-Path $work 'unzipped'
+            Expand-Archive -LiteralPath $file -DestinationPath $unzipped -Force -ErrorAction Stop
+            $installer = @(Get-ChildItem -LiteralPath $unzipped -Recurse -File | Where-Object { $_.Extension -eq '.msi' -or $_.Extension -eq '.exe' } | Sort-Object Extension -Descending)[0]
+            if (-not $installer) { throw "el zip no contiene ningún instalador" }
+        }
+        Unblock-File -LiteralPath $installer.FullName -ErrorAction SilentlyContinue
+        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $marker) -Force -ErrorAction SilentlyContinue)
+        Set-Content -LiteralPath $marker -Value (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -ErrorAction SilentlyContinue
+        Write-Info "Instalando $($App.name)... (acepta el aviso de Windows que pide permiso)"
+        if ($installer.Extension -eq '.msi') {
+            $log = Join-Path $work 'install.log'
+            # One string, so the paths keep their quotes in Windows PowerShell 5.1.
+            $argLine = '/i "{0}" /qn /norestart ALLUSERS=1 /l*v "{1}"' -f $installer.FullName, $log
+            if ($App.download.needsNetFx3 -and -not (Test-NetFx3)) {
+                # Enable .NET 3.5 and install in the same elevated process, so the
+                # member sees one UAC prompt. -EncodedCommand keeps any accent in
+                # the user's folder name intact.
+                Write-Info "$($App.name) necesita .NET Framework 3.5: lo activo antes (lo descarga Windows Update, 1-3 minutos)."
+                $inner = "dism.exe /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null`r`n" +
+                         "`$p = Start-Process -FilePath 'msiexec.exe' -ArgumentList '$($argLine -replace "'", "''")' -Wait -PassThru`r`n" +
+                         "exit `$p.ExitCode"
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+                $process = Start-Process -FilePath 'powershell.exe' -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encoded" -Verb RunAs -Wait -PassThru -ErrorAction Stop
+            } else {
+                $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $argLine -Verb RunAs -Wait -PassThru -ErrorAction Stop
+            }
+        } else {
+            $params = @{ FilePath = $installer.FullName; Wait = $true; PassThru = $true; ErrorAction = 'Stop' }
+            $argLine = (@($App.download.args) | Where-Object { $_ }) -join ' '
+            if ($argLine) { $params['ArgumentList'] = $argLine }
+            if ($App.download.elevate) { $params['Verb'] = 'RunAs' }
+            $process = Start-Process @params
+        }
+        $code = $process.ExitCode
+    } catch {
+        # Includes "No" on the UAC prompt and download errors.
+        Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        Write-Warn "No pude instalar $($App.name) automáticamente: $($_.Exception.Message)"
+        return $false
+    }
+    Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+    # 3010 / 1641: installed, Windows wants a restart.
+    $succeeded = ($code -eq 0 -or $code -eq 3010 -or $code -eq 1641)
+    Reset-AppCache
+    for ($i = 0; $succeeded -and $i -lt 12 -and -not (Test-AppInstalled $App); $i++) { Start-Sleep -Seconds 5; Reset-AppCache }
+    if (Test-AppInstalled $App) {
+        Write-Ok "$($App.name) instalado"
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    Write-Warn "El instalador de $($App.name) terminó (código $code), pero no encuentro el programa: lo instalas tú en el último paso."
+    if ($log) { Write-Info "Detalle de la instalación: $log" }
+    return $false
 }
 
 function Test-PortableApp($App, [string]$Root) {
@@ -946,7 +1070,7 @@ function Invoke-ManualApps($Config, $Member, [string]$Root) {
         } else {
             # Official installer: the browser downloads it (antivirus programs
             # trust browser downloads, not scripts that run installers).
-            Write-Warn "$($app.name) lo instalas tú: tu antivirus podría cortar el setup si lo instalo yo."
+            Write-Warn "$($app.name) no se ha podido instalar solo: instálalo tú (descárgalo en tu carpeta Descargas)."
             if ($app.download.needsNetFx3 -and -not (Test-NetFx3)) {
                 Write-Info "Primero: $($app.name) necesita .NET Framework 3.5. Te abro 'Características de Windows':"
                 Write-Info "marca '.NET Framework 3.5', pulsa Aceptar y deja que Windows lo descargue."
@@ -999,6 +1123,71 @@ function Confirm-Cadlab($Config) {
     Write-Info "Siguiente paso: escribe a $contact y dile $who para que te añada a CADLAB."
 }
 
+function Write-AiHelp($Config, $Member, [string]$Root, [bool]$Final) {
+    # "Ayuda para la IA.txt": a ready-to-paste message for the member's AI
+    # assistant (ChatGPT, Claude...), with links to the script and its docs, the
+    # computer's details and what happened. Written at the start (in case an
+    # antivirus kills the setup) and again at the end. Returns its path.
+    if ($DryRun -or -not $Root -or -not (Test-Path -LiteralPath $Root)) { return $null }
+    $base = Get-RawBase $Config
+    $os = ''
+    try { $os = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).Caption } catch { $os = "Windows $([Environment]::OSVersion.Version)" }
+    $antivirus = @()
+    try { $antivirus = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntivirusProduct' -ErrorAction Stop | ForEach-Object { $_.displayName }) } catch { }
+    if ($antivirus.Count -eq 0) { $antivirus = @('no lo sé') }
+
+    $lines = @(
+        'Hola. Estoy instalando en mi ordenador el entorno de trabajo del equipo Ad Astra UC3M con un script',
+        'de PowerShell y algo no ha ido bien (puede que mi antivirus lo haya bloqueado). No soy experto:',
+        'ayúdame paso a paso, con instrucciones muy sencillas, a terminar la instalación.',
+        '',
+        "- Script del setup: $base/setup-adastra.ps1",
+        "- Instrucciones y problemas frecuentes: $base/README.md",
+        "- Cómo trabaja el equipo: $base/WORKFLOW.md",
+        "- Se ejecuta en PowerShell con: irm $base/setup-adastra.ps1 | iex",
+        "- Mi ordenador: $os, PowerShell $($PSVersionTable.PSVersion), antivirus: $($antivirus -join ', ')",
+        "- Mi perfil: $($Member.Profile.key), proyecto: $($Member.Project.key)",
+        "- Mi carpeta del equipo: $Root",
+        ''
+    )
+    if ($Final) {
+        $lines += 'Resumen del setup:'
+        foreach ($result in $script:Results) { $lines += ("  {0}: {1} {2}" -f $result.Step, $result.Status, $result.Detail) }
+    } else {
+        $lines += 'El setup ha empezado pero puede que se haya cortado a mitad (por ejemplo, por el antivirus).'
+    }
+    if ($script:LogPath -and (Test-Path -LiteralPath $script:LogPath)) {
+        $lines += ''
+        $lines += 'Últimas líneas del registro (setup-log.txt):'
+        $tail = @(Get-Content -LiteralPath $script:LogPath -Encoding UTF8 -Tail 60 -ErrorAction SilentlyContinue)
+        # Keep the member's email out of what they paste.
+        if ($Member.Email) { $tail = @($tail | ForEach-Object { "$_".Replace($Member.Email, '<mi correo UC3M>') }) }
+        $lines += $tail
+    }
+    $path = Join-Path $Root 'Ayuda para la IA.txt'
+    try {
+        [System.IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($true)))
+        return $path
+    } catch { return $null }
+}
+
+function Show-AiHelp($Config, $Member, [string]$Root) {
+    # When something failed: copy the message for the AI to the clipboard and
+    # open it, so the member only has to paste it.
+    $path = Write-AiHelp $Config $Member $Root $true
+    if (-not $path) { return }
+    Write-Host "  ¿Atascado? Te he preparado un mensaje para tu IA de confianza (ChatGPT, Claude...):" -ForegroundColor Yellow
+    try {
+        Set-Clipboard -Value (Get-Content -LiteralPath $path -Raw -Encoding UTF8) -ErrorAction Stop
+        Write-Host "  ya está copiado: abre tu IA, pega con Ctrl+V y envíalo. Te guiará paso a paso." -ForegroundColor Yellow
+    } catch {
+        Write-Host "  copia el texto que te abro en el Bloc de notas, pégalo en tu IA y envíalo." -ForegroundColor Yellow
+    }
+    Write-Host "  (Está guardado en $path)" -ForegroundColor Yellow
+    try { Start-Process 'notepad.exe' -ArgumentList "`"$path`"" -ErrorAction Stop } catch { }
+    Write-Host ""
+}
+
 function Show-Summary([string]$Root) {
     Write-Host ""
     Write-Host "  ================= RESUMEN =================" -ForegroundColor Cyan
@@ -1038,6 +1227,11 @@ function Invoke-AdAstraSetup {
         New-FolderIfMissing $root
         $script:LogPath = Join-Path $root 'setup-log.txt'
         Write-Log "---- Setup iniciado ($($member.Profile.key), $($member.Project.key)/$($member.Area.key)) ----"
+        $helpFile = Write-AiHelp $config $member $root $false
+        if ($helpFile) {
+            Write-Info "Si el setup se corta o algo falla, abre '$helpFile',"
+            Write-Info "copia todo el texto, pégalo en tu IA de confianza (ChatGPT, Claude...) y te ayudará."
+        }
     }
 
     Install-Apps $config $member $root
@@ -1052,6 +1246,12 @@ function Invoke-AdAstraSetup {
     New-Shortcuts $config $member $root
     Confirm-Cadlab $config
     Show-Summary $root
+    # CADLAB "Pendiente" is normal (Jorge adds the member later): not a problem.
+    if (@($script:Results | Where-Object { $_.Step -ne 'CADLAB' -and ($_.Status -eq 'Fallo' -or $_.Status -eq 'Pendiente') }).Count -gt 0) {
+        Show-AiHelp $config $member $root
+    } else {
+        [void](Write-AiHelp $config $member $root $true)
+    }
 }
 
 Invoke-AdAstraSetup

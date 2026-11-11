@@ -45,7 +45,8 @@
       "exe": ["%ProgramFiles%\\MATLAB\\R*\\bin\\matlab.exe"] },
     { "name": "OpenRocket", "profiles": ["all", "vehicle"],
       "download": { "githubRepo": "openrocket/openrocket", "assetPattern": "-installer-Windows-x86_64\\.exe$",
-                    "url": "https://github.com/openrocket/openrocket/releases/download/release-24.12/OpenRocket-24.12-installer-Windows-x86_64.exe" },
+                    "url": "https://github.com/openrocket/openrocket/releases/download/release-24.12/OpenRocket-24.12-installer-Windows-x86_64.exe",
+                    "args": ["-q"], "elevate": true },
       "url": "https://openrocket.info/downloads.html",
       "hint": "Descarga el instalador de Windows de OpenRocket y ejecutalo con las opciones por defecto.",
       "exe": ["%ProgramFiles%\\OpenRocket\\OpenRocket.exe", "%LOCALAPPDATA%\\Programs\\OpenRocket\\OpenRocket.exe"],
@@ -61,6 +62,7 @@
       "portable": { "repoPath": "tools/OSCALC", "dest": "Tools\\OSCALC", "files": ["oscalc.exe", "oscalc_manual.pdf"] },
       "shortcuts": [ { "name": "OSCALC", "file": "oscalc.exe" }, { "name": "OSCALC manual", "file": "oscalc_manual.pdf" } ] }
   ],
+  "antivirusNoDirectInstall": ["Avast", "AVG"],
   "vscodeExtensions": [
     { "id": "stmicroelectronics.stm32-vscode-extension", "name": "STM32Cube for VS Code", "profiles": ["all", "avionics"] }
   ],

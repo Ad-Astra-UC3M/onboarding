@@ -158,14 +158,19 @@ function Find-Exe($App) {
 }
 
 function Get-StartMenuTargets {
-    # Existing .exe targets of every Start Menu shortcut (read once per run).
+    # Existing .exe targets of every Start Menu and desktop shortcut (read once
+    # per run). Some installers (STM32CubeMX) only create a desktop shortcut.
     if ($null -ne $script:StartMenuTargets) { return $script:StartMenuTargets }
     $script:StartMenuTargets = @()
     if (-not $script:OnWindows) { return $script:StartMenuTargets }
     try {
         $shell = New-Object -ComObject WScript.Shell
         $menus = @((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
-        foreach ($link in @(Get-ChildItem -Path $menus -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue)) {
+        $links = @(Get-ChildItem -Path $menus -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue)
+        # Desktops: top level only (never walk into the team folder's repositories).
+        $desktops = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory')) | Where-Object { $_ }
+        $links += @(Get-ChildItem -Path $desktops -Filter '*.lnk' -ErrorAction SilentlyContinue)
+        foreach ($link in $links) {
             $target = $shell.CreateShortcut($link.FullName).TargetPath
             if ($target -and $target.ToLower().EndsWith('.exe') -and (Test-Path -LiteralPath $target)) { $script:StartMenuTargets += $target }
         }
@@ -187,7 +192,9 @@ function Get-UninstallEntries {
 
 function Find-UninstallEntry($App) {
     if (-not $App.uninstallName) { return $null }
-    $pattern = "$($App.uninstallName)*"
+    # "Contains", not "starts with": some vendors prefix the name
+    # (e.g. "STMicroelectronics STM32CubeIDE 2.2.0").
+    $pattern = "*$($App.uninstallName)*"
     $match = @(Get-UninstallEntries | Where-Object { $_.DisplayName -like $pattern })
     if ($match.Count -gt 0) { return $match[0] }
     return $null
